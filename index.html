@@ -49,7 +49,7 @@
       }
       #seat-buttons button.active { background: rgba(140, 100, 40, 0.85); color: #fff3d8; }
       #players {
-        position: fixed; right: 16px; top: max(16px, env(safe-area-inset-top)); margin: 0; padding: 8px 12px;
+        position: fixed; right: 16px; top: calc(max(16px, env(safe-area-inset-top)) + 52px); margin: 0; padding: 8px 12px;
         list-style: none; font: 13px/1.9 "Hiragino Sans", "Noto Sans JP", sans-serif; color: #e8d5b0;
         background: rgba(20, 12, 6, 0.6); border: 1px solid rgba(216, 178, 90, 0.35); border-radius: 6px;
       }
@@ -59,7 +59,7 @@
       #players li.dead .mark { color: #c0392b; }
       #players li.me { color: #ffd98a; font-weight: bold; }
       #chamber-info {
-        position: fixed; right: 16px; top: calc(max(16px, env(safe-area-inset-top)) + 150px);
+        position: fixed; right: 16px; top: calc(max(16px, env(safe-area-inset-top)) + 202px);
         font: 12px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #d8b25a; text-shadow: 0 1px 3px #000;
       }
       #message {
@@ -99,6 +99,7 @@
       #btn-trigger { background: rgba(150, 20, 20, 0.9) !important; font-size: 20px !important; padding: 16px 34px !important; }
       body.mobile #players { top: calc(max(16px, env(safe-area-inset-top)) + 96px); font-size: 12px; line-height: 1.7; }
       body.mobile #chamber-info { top: calc(max(16px, env(safe-area-inset-top)) + 228px); }
+      body.mobile #hud { max-width: calc(100vw - 130px); }
       body.mobile #message { font-size: 17px; top: 40%; max-width: 92vw; }
       #players .tag { color: #d8b25a; font-size: 0.92em; margin-left: 6px; }
       #selector {
@@ -143,6 +144,32 @@
       #choices button.card-toggle.on { transform: translateY(-12px); box-shadow: 0 0 0 3px #ffd36a; }
       body.mobile #choices button { font-size: 15px; padding: 12px 14px; }
       body.mobile #choices button.big { font-size: 24px; padding: 20px 44px; }
+      #btn-rules {
+        position: fixed; right: 16px; top: max(16px, env(safe-area-inset-top)); z-index: 12; cursor: pointer;
+        font: bold 15px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #fff3d8; padding: 9px 18px;
+        background: rgba(90, 50, 20, 0.9); border: 1px solid rgba(216, 178, 90, 0.7); border-radius: 8px;
+      }
+      #rules {
+        position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.55); touch-action: pan-y;
+      }
+      #rules .panel {
+        position: relative; width: min(680px, 92vw); max-height: 82vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+        padding: 22px 26px; box-sizing: border-box; touch-action: pan-y;
+        background: #1c120a; border: 2px solid rgba(216, 178, 90, 0.75); border-radius: 12px; box-shadow: 0 10px 40px #000;
+        font: 14px/1.75 "Hiragino Sans", "Noto Sans JP", sans-serif; color: #eadbbd;
+      }
+      #rules h2 { margin: 0 0 10px; font: bold 22px Georgia, "Hiragino Mincho ProN", "Noto Serif JP", serif; color: #ffd36a; }
+      #rules h3 { margin: 18px 0 4px; font: bold 16px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #d8b25a;
+        border-bottom: 1px solid rgba(216, 178, 90, 0.35); padding-bottom: 3px; }
+      #rules ul { margin: 4px 0; padding-left: 1.3em; }
+      #rules b { color: #ffd9a0; }
+      #rules .close {
+        position: sticky; top: -14px; display: block; margin: -8px -10px 4px auto; cursor: pointer; box-shadow: 0 0 0 10px #1c120a;
+        font: bold 15px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #fff3d8; padding: 7px 14px;
+        background: rgba(90, 50, 20, 0.95); border: 1px solid rgba(216, 178, 90, 0.7); border-radius: 8px;
+      }
+      #choices button.big.pressed { background: rgba(110, 105, 100, 0.9); color: #ddd; border-color: rgba(200, 200, 200, 0.5); }
       #overlay { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
       #error {
         display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
@@ -190,6 +217,78 @@
       <button data-c="low">👎 Low(一番小さい)</button>
     </div>
     <div id="choices" style="display: none"></div>
+    <button id="btn-rules">説明</button>
+    <div id="rules" style="display: none">
+      <div class="panel">
+        <button class="close">閉じる ✕</button>
+        <h2>サルーン・ルーレット</h2>
+        <h3>ゲームの流れ</h3>
+        <ul>
+          <li>4 人で丸テーブルを囲み、<b>ミニゲーム</b>で勝負する。</li>
+          <li>次に遊ぶミニゲームは毎回<b>ルーレットで抽選</b>される。</li>
+          <li>ミニゲームで<b>最下位</b>になった人は、リボルバーを自分の頭に当てて<b>引き金を 1 回引く</b>。</li>
+          <li><b>最後の 1 人</b>まで生き残った人の勝ち。あなたが撃たれた後は、観戦して決着を見届ける。</li>
+        </ul>
+        <h3>リボルバー</h3>
+        <ul>
+          <li>6 発入るシリンダーに<b>弾は 1 発だけ</b>。弾を込めたときに一度だけシリンダーを回す。</li>
+          <li>空撃ちのたびに次の薬室へ進むので、<b>外れが続くほど次が危ない</b>(1/6 → 1/5 → … → 最後は必ず出る)。</li>
+          <li>誰かが撃たれたら、次に銃を拾う人が弾を込め直して回し直す。</li>
+          <li>自分の番は「引き金を引く」ボタン(PC は Enter)を自分で押す。</li>
+        </ul>
+        <h3>ナンバーズ</h3>
+        <ul>
+          <li>全員が 1〜6 のカードから 1 枚を伏せて出し、一斉に表にする。</li>
+          <li>一番大きい数字の人が勝ち。</li>
+          <li><b>最下位</b>:数字が 2 人で被ったら<b>その 2 人とも</b>(撃つ順はランダム。このとき一番小さい数字の人は罰なし)。被りがなければ<b>一番小さい数字</b>の人。</li>
+          <li>同じ数字に 3 人以上、または被りが 2 組(例:2・2・4・4)なら<b>やり直し</b>。</li>
+        </ul>
+        <h3>ブラインド・ハイ＆ロー</h3>
+        <ul>
+          <li>A〜10 の 40 枚を使用。全員 10 点から始めて 4 ラウンド。</li>
+          <li>配られたカードは額にかざすので、<b>自分のカードだけ見えない</b>(他の人のカードは頭の上にも表示)。</li>
+          <li>自分のカードが全員の中で<b>一番大きい(High)</b>か<b>一番小さい(Low)</b>かを一斉に親指で示す。</li>
+          <li>当たり <b>+3 点</b>、外れ <b>−2 点</b>。同じ数字で並んだ場合も「一番」として当たり。</li>
+          <li><b>最下位</b>:4 ラウンド後に点数が一番少ない人(同点なら並んだ全員が撃つ)。</li>
+        </ul>
+        <h3>チキン・ダイス</h3>
+        <ul>
+          <li>1 人ずつ、サイコロを好きなだけ振って出た目を足していく。「やめる」で合計を確定。</li>
+          <li><b>1 が出たらバースト</b>で 0 点、その場で番が終わる。</li>
+          <li><b>最下位</b>:合計が一番小さい人(同点ならサイコロで決着。小さい目が負け)。</li>
+        </ul>
+        <h3>早撃ち</h3>
+        <ul>
+          <li>「構えろ」の後、ベルと「撃て!」の合図が出たら「抜け!」を押す(PC は Space)。押すとボタンが灰色になる。</li>
+          <li>一番遅かった人と、合図の前に押した人(お手つき)に <b>✕</b>。</li>
+          <li><b>最下位</b>:3 本勝負で ✕ が一番多い人。同点ならその人たちだけで決着がつくまで続ける。</li>
+        </ul>
+        <h3>ブラックジャック</h3>
+        <ul>
+          <li>カードは伏せて配られ、<b>自分の手札と点数は自分にしか見えない</b>。</li>
+          <li>順番に「ヒット(もう 1 枚)」か「スタンド」。21 を超えたら<b>バーストで 0 点</b>。A は 1 か 11、絵札は 10、カードは 5 枚まで。</li>
+          <li>全員が終わったら一斉に開示。<b>最下位</b>:点数が一番低い人(同点ならサイコロで決着)。</li>
+        </ul>
+        <h3>ラスト・チップ</h3>
+        <ul>
+          <li>中央のチップ(17〜23 枚)を、順番に 1〜3 枚ずつ取っていく。</li>
+          <li><b>最下位</b>:<b>最後の 1 枚</b>を取った人。</li>
+        </ul>
+        <h3>スリーカード・ポーカー</h3>
+        <ul>
+          <li>3 枚ずつ配られ、自分の手だけ見える。好きな枚数を<b>1 回だけ交換</b>できる。</li>
+          <li>役の強さ:ストレートフラッシュ > スリーカード > ストレート > フラッシュ > ワンペア > ハイカード。</li>
+          <li>同じ役なら数字で比較(A が最強、A-2-3 は一番弱いストレート)。それでも同じならマーク(♠ > ♥ > ♦ > ♣)。</li>
+          <li><b>最下位</b>:一番弱い役の人。</li>
+        </ul>
+        <h3>操作</h3>
+        <ul>
+          <li>画面をドラッグ(なぞる)して見回す。選択肢はボタン(PC は数字キーでも可)。</li>
+          <li>PC:クリックで視点固定 / Esc で解除。R でゲーム開始。</li>
+        </ul>
+      </div>
+    </div>
+
     <div id="error"></div>
     <script>
       // iOS Safari は user-scalable=no を無視するため、ピンチやダブルタップでの拡大を止める
@@ -204,6 +303,20 @@
       document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
       document.addEventListener('contextmenu', (e) => e.preventDefault());
       document.addEventListener('selectstart', (e) => e.preventDefault());
+
+      // 説明パネル
+      (() => {
+        const panel = document.getElementById('rules');
+        const open = (on) => {
+          panel.style.display = on ? 'flex' : 'none';
+          if (on) document.exitPointerLock?.();
+        };
+        document.getElementById('btn-rules').addEventListener('click', (e) => { e.stopPropagation(); open(panel.style.display === 'none'); });
+        panel.querySelector('.close').addEventListener('click', (e) => { e.stopPropagation(); open(false); });
+        panel.addEventListener('click', (e) => { e.stopPropagation(); if (e.target === panel) open(false); });
+        panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.style.display !== 'none') open(false); });
+      })();
 
       // 読み込みや描画のエラーを画面に表示する(スマホでの確認用)
       function showError(msg) {

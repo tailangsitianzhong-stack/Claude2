@@ -55,12 +55,20 @@ export class QuickDraw {
         press();
       }
     };
+    let btn = null;
     const press = () => {
-      if (playerPress === null) playerPress = game.clock - start;
+      if (playerPress !== null) return;
+      playerPress = game.clock - start;
+      // 押したことが分かるようにボタンを灰色にする
+      if (btn) {
+        btn.classList.add('pressed');
+        btn.textContent = '✔ 抜いた!';
+      }
     };
     if (me) {
       box.innerHTML = '';
       const b = document.createElement('button');
+      btn = b;
       b.textContent = '🔫 抜け!';
       b.className = 'big';
       b.addEventListener('pointerdown', (e) => {
