@@ -236,6 +236,9 @@ export class BlindHighLow {
       const jobs = alive.map(async (p, i) => {
         await game.wait(i * 0.18);
         const c = deal.get(p.seat);
+        // 頭の上にもカードを浮かべる(向きに関係なく見えるように)。自分の分は見えない
+        const red = c.suit === '♥' || c.suit === '♦';
+        game.setFloat(p.seat, `${RANK(c.v)}${c.suit}`, { color: red ? '#ff7a6a' : '#f3e2bd' });
         const card = createCard(c.v, c.suit);
         this.objects.push(card);
         game.sfx.card();
@@ -347,6 +350,7 @@ export class BlindHighLow {
       this.objects = [];
       this.holding.clear();
       this.myCard = null;
+      game.clearFloats();
       await game.wait(0.5);
     }
 

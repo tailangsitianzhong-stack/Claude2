@@ -87,7 +87,10 @@ export class RouletteGame {
       chamber: document.getElementById('chamber-info'),
       overlay: document.getElementById('overlay'),
       seatButtons: document.getElementById('seat-buttons'),
+      choices: document.getElementById('choices'),
     };
+    this.clock = 0; // ゲーム内の経過時間(秒)
+    this.floats = new Map(); // seat → 頭上の表示
     this.ui.restart.addEventListener('click', (e) => {
       e.stopPropagation();
       this.restart();
@@ -115,6 +118,8 @@ export class RouletteGame {
   }
 
   update(dt) {
+    this.clock += dt;
+    this._updateFloats();
     for (const task of [...this.tasks]) {
       task.t += dt;
       const p = Math.min(1, task.t / task.dur);
@@ -134,6 +139,98 @@ export class RouletteGame {
       this.flashSprite.material.opacity = k;
       this.flashSprite.visible = k > 0.01;
     }
+  }
+
+  // ─── 頭上の表示(数字・得点など) ───
+  setFloat(seat, text, { color = '#f3e2bd', bg = 'rgba(20,12,6,0.82)' } = {}) {
+    let f = this.floats.get(seat);
+    if (!text) {
+      if (f) f.sprite.visible = false;
+      return;
+    }
+    if (!f) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      sprite.renderOrder = 999;
+      sprite.scale.set(0.38, 0.095, 1);
+      this.scene.add(sprite);
+      f = { canvas, tex, sprite };
+      this.floats.set(seat, f);
+    }
+    const ctx = f.canvas.getContext('2d');
+    ctx.clearRect(0, 0, 512, 128);
+    ctx.font = 'bold 64px Georgia, "Hiragino Mincho ProN", "Noto Serif JP", "DejaVu Sans", serif';
+    const w = Math.min(500, ctx.measureText(text).width + 60);
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(256 - w / 2, 10, w, 108, 40);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(216,178,90,0.8)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 256, 66);
+    f.tex.needsUpdate = true;
+    f.sprite.visible = true;
+    f.text = text;
+  }
+
+  clearFloats() {
+    for (const f of this.floats.values()) f.sprite.visible = false;
+  }
+
+  _updateFloats() {
+    for (const [seat, f] of this.floats) {
+      if (!f.sprite.visible) continue;
+      const head = this.players[seat].character.userData.head;
+      head.getWorldPosition(f.sprite.position);
+      f.sprite.position.y += 0.36;
+      // 自分の頭上は(生きていて着席中なら)見えない位置なので表示しない
+      const own = seat === this.playerSeat && this.started && !this.playerDead && this.controls.mode === 'seat';
+      f.sprite.material.opacity = own ? 0 : 1;
+    }
+  }
+
+  // ─── プレイヤーへの選択肢(ボタン)。数字キー 1〜n でも選べる ───
+  choose(options, prompt) {
+    if (prompt) this.say(prompt);
+    const box = this.ui.choices;
+    box.innerHTML = '';
+    document.exitPointerLock?.();
+    return new Promise((res) => {
+      const finish = (v) => {
+        window.removeEventListener('keydown', onKey);
+        box.innerHTML = '';
+        box.style.display = 'none';
+        this._chooseFinish = null;
+        res(v);
+      };
+      const onKey = (e) => {
+        const n = Number(e.key);
+        if (n >= 1 && n <= options.length && !options[n - 1].disabled) finish(options[n - 1].value);
+      };
+      options.forEach((o) => {
+        const b = document.createElement('button');
+        b.textContent = o.label;
+        b.disabled = !!o.disabled;
+        if (o.cls) b.className = o.cls;
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          finish(o.value);
+        });
+        box.appendChild(b);
+      });
+      window.addEventListener('keydown', onKey);
+      this._chooseFinish = finish;
+      this._chooseOptions = options;
+      box.style.display = '';
+    });
   }
 
   // ─── 銃の位置・姿勢 ───
@@ -224,6 +321,17 @@ export class RouletteGame {
   // 座ったまま(少し前かがみで)手が届く、その人の右手前の位置
   gunSpot(seat) {
     return this.tablePose(seat, { dist: 0.5, lateral: 0.1 });
+  }
+
+  // ミニゲームの邪魔にならないよう、銃を席と席の間のテーブルの端へ寄せる
+  async parkGun() {
+    const a = Math.PI / 4;
+    const p = this.tablePos.clone().add(V(Math.sin(a) * 0.6, 0, Math.cos(a) * 0.6));
+    p.y = this.tableTop + 0.0165;
+    if (this.gun.position.distanceTo(p) < 0.05) return;
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, a + Math.PI / 2, 0, 'YXZ'));
+    this.sfx.slide?.(0.5);
+    await this.moveGun(() => ({ p, q }), 0.6, 0);
   }
 
   // 銃をテーブルの上で滑らせて、その人の手前まで届ける
@@ -370,6 +478,7 @@ export class RouletteGame {
     this.controls.setSeat(this.playerSeat);
     this.controls.locked = true;
     this.ui.seatButtons.style.display = 'none';
+    document.body.classList.add('playing'); // 操作説明を隠して画面を広く使う
     this.players.forEach((p) => {
       p.name = p.seat === this.playerSeat ? 'あなた' : this.presets[p.seat].name;
     });
@@ -403,11 +512,13 @@ export class RouletteGame {
       while (!this.over) {
         const mg = await this.selector.pick(this, this.minigames);
         this.activeMinigame = mg;
+        await this.parkGun();
         const losers = await mg.play(this);
         await this.shootLosers(losers);
         mg.cleanup?.(this);
         this.activeMinigame = null;
         this.tags = {};
+        this.clearFloats();
         this.renderPlayers();
         await this.checkEnd();
         if (!this.over) await this.wait(1.4);
@@ -645,6 +756,7 @@ export class RouletteGame {
     this._applyPose(this.gunRest.p, this.gunRest.q);
     this.cartridge.visible = true;
     this.controls.locked = false;
+    document.body.classList.remove('playing');
     this.controls.shake = 0;
     this.controls.setLookTarget(null);
     this.controls.setSeat(this.playerSeat);
@@ -654,7 +766,9 @@ export class RouletteGame {
     this.ui.round.style.display = '';
     this.ui.seatButtons.style.display = '';
     this.tags = {};
+    this.activeMinigame?.cleanup?.(this);
     this.activeMinigame = null;
+    this.clearFloats();
     this.updateChamberInfo();
     this.renderPlayers();
   }

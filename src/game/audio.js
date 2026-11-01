@@ -95,6 +95,44 @@ export class Sfx {
     this._tick(this.ctx.currentTime + 0.08, { freq: 1500, gain: 0.3, dur: 0.03, q: 2 });
   }
 
+  // サイコロが転がる音
+  dice(dur = 0.9) {
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime;
+    let t = 0;
+    let gap = 0.05;
+    while (t < dur) {
+      this._tick(t0 + t, { freq: 1200 + Math.random() * 900, gain: 0.35 * (1 - t / dur) + 0.05, dur: 0.03, q: 3 });
+      t += gap;
+      gap *= 1.18;
+    }
+  }
+
+  // チップを置く音
+  chip() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this._tick(t, { freq: 3800, gain: 0.4, dur: 0.03, q: 6 });
+    this._tick(t + 0.04, { freq: 3200, gain: 0.25, dur: 0.03, q: 6 });
+  }
+
+  // 呼び鈴(早撃ちの合図)
+  bell() {
+    if (!this.ctx) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    for (const [f, g] of [[1760, 0.5], [2640, 0.2], [4400, 0.08]]) {
+      const o = c.createOscillator();
+      o.frequency.value = f;
+      const gn = c.createGain();
+      gn.gain.setValueAtTime(g, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+      o.connect(gn).connect(this.master);
+      o.start(t);
+      o.stop(t + 1.25);
+    }
+  }
+
   bang() {
     if (!this.ctx) return;
     const c = this.ctx;

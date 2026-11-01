@@ -10,6 +10,11 @@ import { RouletteGame } from './game/roulette.js';
 import { NumbersGame } from './game/numbers.js';
 import { BlindHighLow } from './game/blindhl.js';
 import { MinigameSelector } from './game/selector.js';
+import { ChickenDice } from './game/chickendice.js';
+import { QuickDraw } from './game/quickdraw.js';
+import { Blackjack } from './game/blackjack.js';
+import { LastChip } from './game/lastchip.js';
+import { ThreeCardPoker } from './game/poker3.js';
 import { createRng } from './textures.js';
 
 // スマホ・タブレットでは画質を落として軽くする
@@ -207,7 +212,16 @@ game = new RouletteGame({
 // ミニゲーム(毎回ルーレットで抽選)
 const numbers = new NumbersGame(scene);
 const blindhl = new BlindHighLow(scene);
-game.minigames = [numbers, blindhl];
+const minigames = {
+  numbers,
+  blindhl,
+  chicken: new ChickenDice(scene),
+  quickdraw: new QuickDraw(scene),
+  blackjack: new Blackjack(scene),
+  lastchip: new LastChip(scene),
+  poker: new ThreeCardPoker(scene),
+};
+game.minigames = Object.values(minigames);
 game.selector = new MinigameSelector();
 document.getElementById('btn-round').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -242,6 +256,7 @@ fitCamera();
 // 確認用(開発時にコンソールから視点を動かせる)
 window.__saloon = {
   controls,
+  minigames,
   camera,
   setView(pos, target) {
     controls.mode = 'free';

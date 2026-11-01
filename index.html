@@ -69,6 +69,8 @@
         z-index: 6;
       }
       #message.show { opacity: 1; }
+      body.playing #hud .help-pc, body.playing #hud .help-touch { display: none; }
+      #message.shout { font-size: 72px; color: #ff6a4a; top: 30%; transition: none; }
       #message { white-space: pre-line; }
       #hand {
         position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 70px); transform: translateX(-50%);
@@ -123,6 +125,24 @@
       body.mobile #selector .reel { font-size: 21px; }
       body.mobile #hl-buttons { gap: 8px; }
       body.mobile #hl-buttons button { font-size: 15px; padding: 12px 12px; }
+      #choices {
+        position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 70px); transform: translateX(-50%);
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; z-index: 8; width: max-content; max-width: 94vw;
+      }
+      #choices button {
+        font: bold 17px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #fff3d8; cursor: pointer; white-space: nowrap;
+        background: rgba(90, 50, 20, 0.92); border: 2px solid rgba(216, 178, 90, 0.7); border-radius: 10px; padding: 13px 20px;
+      }
+      #choices button:disabled { opacity: 0.35; }
+      #choices button.big { font-size: 28px; padding: 22px 56px; background: rgba(150, 20, 20, 0.92); }
+      #choices button.card-toggle {
+        width: 64px; height: 90px; padding: 0; background: #efe4c8; color: #1a1410; border-color: #6a4a2a;
+        font: bold 24px Georgia, "DejaVu Sans", serif; transition: transform 0.12s;
+      }
+      #choices button.card-toggle.red { color: #9a1a14; }
+      #choices button.card-toggle.on { transform: translateY(-12px); box-shadow: 0 0 0 3px #ffd36a; }
+      body.mobile #choices button { font-size: 15px; padding: 12px 14px; }
+      body.mobile #choices button.big { font-size: 24px; padding: 20px 44px; }
       #overlay { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
       #error {
         display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
@@ -139,7 +159,7 @@
       <div class="help-pc">クリック/ドラッグ:見回す　Esc:マウス解除</div>
       <div class="help-pc">1〜4:席を移動　F:自由移動モード切替</div>
       <div class="help-pc">自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
-      <div class="help-pc">R:ゲーム開始　1〜6:カード　↑↓:High/Low　Enter:引き金</div>
+      <div class="help-pc">R:ゲーム開始　数字キー:選択肢　↑↓:High/Low　Space:早撃ち　Enter:引き金</div>
       <div class="help-touch">画面をなぞって見回す / 下のボタンで席を移動</div>
     </div>
     <div id="seat-buttons">
@@ -169,6 +189,7 @@
       <button data-c="high">👍 High(一番大きい)</button>
       <button data-c="low">👎 Low(一番小さい)</button>
     </div>
+    <div id="choices" style="display: none"></div>
     <div id="error"></div>
     <script>
       // iOS Safari は user-scalable=no を無視するため、ピンチやダブルタップでの拡大を止める
