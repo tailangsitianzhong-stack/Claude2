@@ -100,6 +100,7 @@ function createCard(n) {
 export class NumbersGame {
   constructor(scene) {
     this.scene = scene;
+    this.title = 'ナンバーズ';
     this.cards = [];
     this.firstTime = true;
     this.hand = document.getElementById('hand');

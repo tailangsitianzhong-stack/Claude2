@@ -98,6 +98,31 @@
       body.mobile #players { top: calc(max(16px, env(safe-area-inset-top)) + 96px); font-size: 12px; line-height: 1.7; }
       body.mobile #chamber-info { top: calc(max(16px, env(safe-area-inset-top)) + 228px); }
       body.mobile #message { font-size: 17px; top: 40%; max-width: 92vw; }
+      #players .tag { color: #d8b25a; font-size: 0.92em; margin-left: 6px; }
+      #selector {
+        position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); z-index: 9; text-align: center;
+        padding: 18px 26px 22px; background: rgba(20, 12, 6, 0.88); border: 2px solid rgba(216, 178, 90, 0.7);
+        border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7); min-width: min(320px, 80vw);
+      }
+      #selector .label { font: bold 14px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #d8b25a; letter-spacing: 0.2em; }
+      #selector .reel {
+        margin-top: 10px; padding: 12px 10px; border-top: 1px solid rgba(216,178,90,0.4); border-bottom: 1px solid rgba(216,178,90,0.4);
+        font: bold 26px Georgia, "Hiragino Mincho ProN", "Noto Serif JP", serif; color: #f3e2bd; white-space: nowrap;
+      }
+      #selector.done .reel { color: #ffd36a; text-shadow: 0 0 14px rgba(255, 190, 80, 0.8); }
+      #hl-buttons {
+        position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 70px); transform: translateX(-50%);
+        display: flex; gap: 14px; z-index: 8;
+      }
+      #hl-buttons button {
+        font: bold 20px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #fff3d8; cursor: pointer; white-space: nowrap;
+        background: rgba(90, 50, 20, 0.9); border: 2px solid rgba(216, 178, 90, 0.7); border-radius: 10px; padding: 14px 24px;
+      }
+      #hl-buttons button[data-c="high"] { background: rgba(40, 90, 40, 0.92); }
+      #hl-buttons button[data-c="low"] { background: rgba(120, 30, 30, 0.92); }
+      body.mobile #selector .reel { font-size: 21px; }
+      body.mobile #hl-buttons { gap: 8px; }
+      body.mobile #hl-buttons button { font-size: 15px; padding: 12px 12px; }
       #overlay { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
       #error {
         display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
@@ -114,8 +139,7 @@
       <div class="help-pc">クリック/ドラッグ:見回す　Esc:マウス解除</div>
       <div class="help-pc">1〜4:席を移動　F:自由移動モード切替</div>
       <div class="help-pc">自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
-      <div class="help-pc">R:ナンバーズ開始　1〜6:カードを選ぶ　Enter:引き金を引く</div>
-      <div>右の名前をタップ → その人を最下位にする(テスト用)</div>
+      <div class="help-pc">R:ゲーム開始　1〜6:カード　↑↓:High/Low　Enter:引き金</div>
       <div class="help-touch">画面をなぞって見回す / 下のボタンで席を移動</div>
     </div>
     <div id="seat-buttons">
@@ -129,7 +153,7 @@
     <div id="overlay"></div>
     <div id="message"></div>
     <div id="game-controls">
-      <button id="btn-round">ナンバーズ開始</button>
+      <button id="btn-round">ゲーム開始</button>
       <button id="btn-trigger" style="display: none">引き金を引く</button>
       <button id="btn-restart" style="display: none">もう一度</button>
     </div>
@@ -139,6 +163,11 @@
         <button data-n="1" class="red">1</button><button data-n="2">2</button><button data-n="3" class="red">3</button>
         <button data-n="4">4</button><button data-n="5" class="red">5</button><button data-n="6">6</button>
       </div>
+    </div>
+    <div id="selector" style="display: none"><div class="label">NEXT GAME</div><div class="reel"></div></div>
+    <div id="hl-buttons" style="display: none">
+      <button data-c="high">👍 High(一番大きい)</button>
+      <button data-c="low">👎 Low(一番小さい)</button>
     </div>
     <div id="error"></div>
     <script>

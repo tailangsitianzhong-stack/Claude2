@@ -8,6 +8,8 @@ import { createRevolver, createCartridge } from './props/revolver.js';
 import { createCharacter, updateCharacter, CHARACTER_PRESETS } from './props/character.js';
 import { RouletteGame } from './game/roulette.js';
 import { NumbersGame } from './game/numbers.js';
+import { BlindHighLow } from './game/blindhl.js';
+import { MinigameSelector } from './game/selector.js';
 import { createRng } from './textures.js';
 
 // スマホ・タブレットでは画質を落として軽くする
@@ -202,15 +204,17 @@ game = new RouletteGame({
   names: CHARACTER_PRESETS.map((p) => p.name),
   presets: CHARACTER_PRESETS,
 });
-// ミニゲーム(今はナンバーズのみ)
+// ミニゲーム(毎回ルーレットで抽選)
 const numbers = new NumbersGame(scene);
-const startMinigame = () => game.playMinigame(numbers);
+const blindhl = new BlindHighLow(scene);
+game.minigames = [numbers, blindhl];
+game.selector = new MinigameSelector();
 document.getElementById('btn-round').addEventListener('click', (e) => {
   e.stopPropagation();
-  startMinigame();
+  game.startMatch();
 });
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyR') startMinigame();
+  if (e.code === 'KeyR') game.startMatch();
 });
 updateStatus();
 
@@ -252,6 +256,7 @@ window.__saloon = {
   characters,
   revolver,
   numbers,
+  blindhl,
   get game() {
     return game;
   },

@@ -125,6 +125,7 @@ export class RouletteGame {
       }
     }
     this._updateGun();
+    this.activeMinigame?.update?.(dt);
     // 閃光を消していく
     if (this.flashT > 0) {
       this.flashT = Math.max(0, this.flashT - dt);
@@ -387,58 +388,77 @@ export class RouletteGame {
     this.renderPlayers();
   }
 
-  // テスト用:指定した人(なければランダム)を最下位にしてルーレットだけ行う
-  async round(forceSeat = null) {
-    await this.runRound(async () => {
-      const alive = this.players.filter((p) => p.alive);
-      let loser = forceSeat !== null ? this.players[forceSeat] : alive[Math.floor(Math.random() * alive.length)];
-      if (!loser.alive) loser = alive[0];
-      return [loser];
-    });
-  }
-
-  // ミニゲームを 1 回遊び、最下位になった人(複数なら順番に)が引き金を引く
-  async playMinigame(minigame) {
-    await this.runRound(() => minigame.play(this), () => minigame.cleanup?.());
-  }
-
-  async runRound(getLosers, cleanup = null) {
+  // 試合:ミニゲームを抽選 → 遊ぶ → 最下位が撃つ、を最後の 1 人になるまで自動で繰り返す
+  async startMatch() {
     this.sfx.unlock();
     if (this.busy || this.over) return;
     this.busy = true;
-    this.ui.round.disabled = true;
-    this.ui.round.style.display = 'none'; // ラウンド中はボタンを隠す
+    this.ui.round.style.display = 'none';
     try {
       if (!this.started) {
         this.start();
         this.say('弾を 1 発だけ込める。生き残れるのは 1 人だけだ。');
-        await this.wait(2.2);
+        await this.wait(2.4);
       }
-      const losers = await getLosers();
-      for (const loser of losers) {
-        if (!loser.alive) continue;
-        if (this.players.filter((p) => p.alive).length <= 1) break;
-        if (loser.seat === this.playerSeat) await this.playerTurn(loser);
-        else await this.npcTurn(loser);
-        await this.wait(0.4);
-      }
-      cleanup?.();
-
-      const left = this.players.filter((p) => p.alive);
-      if (left.length === 1) {
-        this.over = true;
-        const w = left[0];
-        await this.wait(1.0);
-        this.say(w.seat === this.playerSeat ? 'あなたの勝ちだ。最後まで生き残った。' : `${w.name} の勝ち。最後の 1 人になった。`);
-        if (w.seat !== this.playerSeat) w.character.userData.focus = this.camera.position;
-        this.ui.restart.style.display = '';
+      while (!this.over) {
+        const mg = await this.selector.pick(this, this.minigames);
+        this.activeMinigame = mg;
+        const losers = await mg.play(this);
+        await this.shootLosers(losers);
+        mg.cleanup?.(this);
+        this.activeMinigame = null;
+        this.tags = {};
+        this.renderPlayers();
+        await this.checkEnd();
+        if (!this.over) await this.wait(1.4);
       }
     } finally {
       this.busy = false;
-      this.ui.round.disabled = false;
-      this.ui.round.style.display = this.over ? 'none' : '';
       this.renderPlayers();
     }
+  }
+
+  async shootLosers(losers) {
+    for (const loser of losers) {
+      if (!loser.alive) continue;
+      if (this.players.filter((p) => p.alive).length <= 1) break;
+      if (loser.seat === this.playerSeat) await this.playerTurn(loser);
+      else await this.npcTurn(loser);
+      await this.wait(0.4);
+    }
+  }
+
+  async checkEnd() {
+    const left = this.players.filter((p) => p.alive);
+    if (left.length !== 1) return;
+    this.over = true;
+    const w = left[0];
+    await this.wait(1.0);
+    this.say(w.seat === this.playerSeat ? 'あなたの勝ちだ。最後まで生き残った。' : `${w.name} の勝ち。最後の 1 人になった。`);
+    if (w.seat !== this.playerSeat) w.character.userData.focus = this.camera.position;
+    this.ui.restart.style.display = '';
+  }
+
+  // 開発・確認用:指定した人を最下位にしてルーレットだけ行う
+  async round(forceSeat = 0) {
+    if (this.busy || this.over) return;
+    this.busy = true;
+    try {
+      if (!this.started) this.start();
+      await this.shootLosers([this.players[forceSeat]]);
+      await this.checkEnd();
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  // 撃ち終わったら視点を正面(テーブル)に戻す
+  async lookForward() {
+    this.clearFocus();
+    if (this.playerDead) return;
+    this.controls.setLookTarget(0, -0.2);
+    await this.wait(0.9);
+    this.controls.setLookTarget(null);
   }
 
   async npcTurn(pl) {
@@ -525,8 +545,8 @@ export class RouletteGame {
       await this.moveGun(() => drop, 0.45, 0.06);
       await this.wait(1.8);
     }
-    this.clearFocus();
     this.renderPlayers();
+    await this.lookForward();
   }
 
   async playerTurn(pl) {
@@ -602,8 +622,8 @@ export class RouletteGame {
       this.say('観戦中…… 最後の 1 人が決まるまで見届けよう', 3.5);
       await this.wait(1.2);
     }
-    this.clearFocus();
     this.renderPlayers();
+    await this.lookForward();
   }
 
   restart() {
@@ -633,6 +653,8 @@ export class RouletteGame {
     this.ui.restart.style.display = 'none';
     this.ui.round.style.display = '';
     this.ui.seatButtons.style.display = '';
+    this.tags = {};
+    this.activeMinigame = null;
     this.updateChamberInfo();
     this.renderPlayers();
   }
@@ -654,11 +676,8 @@ export class RouletteGame {
       li.className = `${p.alive ? 'alive' : 'dead'}${isMe ? ' me' : ''}`;
       const name = isMe && !this.started ? `${this.presets[p.seat].name}(あなた)` : p.name;
       li.innerHTML = `<span class="mark">${p.alive ? '●' : '✕'}</span>${name}`;
-      li.title = 'タップするとこの人を最下位にする(テスト用)';
-      li.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (p.alive) this.round(p.seat);
-      });
+      const tag = this.tags?.[p.seat];
+      if (tag) li.innerHTML += ` <span class="tag">${tag}</span>`;
       ul.appendChild(li);
     }
   }
