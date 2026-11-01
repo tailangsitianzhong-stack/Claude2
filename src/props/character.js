@@ -350,6 +350,8 @@ export function createCharacter(o) {
     baseLean,
     lean: baseLean,
     leanOffset: 0, // 一時的な前傾・のけぞり(びくっとする等)
+    reachTarget: 0, // テーブルの物に手を伸ばすときの前かがみ(目標)
+    reachCur: 0,
     breath: Math.random() * 10,
     nextLook: 0,
     nextBlink: 1 + Math.random() * 3,
@@ -438,7 +440,8 @@ export function updateCharacter(ch, t, dt, targets) {
 
   // 前傾(びくっとした後などは徐々に戻る)
   u.leanOffset += (0 - u.leanOffset) * (1 - Math.exp(-dt * 2));
-  u.torso.rotation.x = u.lean + u.leanOffset;
+  u.reachCur += (u.reachTarget - u.reachCur) * (1 - Math.exp(-dt * 5));
+  u.torso.rotation.x = u.lean + u.leanOffset + u.reachCur;
   u.torso.rotation.z = 0;
 
   // 呼吸と震え
@@ -514,6 +517,8 @@ export function resetCharacter(ch) {
   u.eyesClosed = false;
   u.tremble = 0;
   u.leanOffset = 0;
+  u.reachTarget = 0;
+  u.reachCur = 0;
   u.torso.rotation.set(u.baseLean, 0, 0);
   for (const arm of u.arms) {
     arm.controlled = false;
@@ -526,24 +531,28 @@ export function resetCharacter(ch) {
 export const CHARACTER_PRESETS = [
   {
     name: '赤バンダナの若造',
+    short: '若造',
     skin: 0xe0b08a, hair: 0x5a3418, hairStyle: 'short', beard: 'stubble',
     shirt: 0x6a7f9a, vest: 0x5a3820, pants: 0x3a4250, bandana: 0x9a1a14,
     hat: { type: 'cowboy', color: 0x8a6a48, band: 0x2a1a0c, tilt: -0.12 },
   },
   {
     name: '白髭の老ギャンブラー',
+    short: '老人',
     skin: 0xd8a888, hair: 0xd8d4cc, hairStyle: 'bald', beard: 'full', browAngle: 0.25,
     shirt: 0xe8e2d4, vest: 0x5a1a1a, coat: 0x1e1c1e, pants: 0x262426, tie: 0x111111,
     hat: { type: 'flat', color: 0x151313, band: 0x3a3a3a, tilt: -0.04 }, lean: 0.06,
   },
   {
     name: '口ひげの大男',
+    short: '大男',
     skin: 0x8a5a3a, hair: 0x1a120c, hairStyle: 'short', beard: 'handlebar', build: 1.18,
     shirt: 0xb89a6a, vest: 0x2e3a2a, pants: 0x4a3a2a, button: 0xd8d0c0,
     hat: { type: 'derby', color: 0x3a2a1c }, lean: 0.14,
   },
   {
     name: '黒髪の女ギャンブラー',
+    short: '女',
     skin: 0xf0c8a8, hair: 0x140c0a, hairStyle: 'long', beard: 'none', build: 0.88, eye: 0x2a4a3a, browAngle: -0.05,
     shirt: 0xe6dccb, vest: 0x4a1a4a, pants: 0x22181e, bandana: 0x1a1a1a,
     hat: { type: 'flat', color: 0x2a1c2a, band: 0x8a6a2a, tilt: -0.1, roll: 0.08 },

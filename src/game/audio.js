@@ -71,6 +71,30 @@ export class Sfx {
     }
   }
 
+  // テーブルの上を物が滑る音・カードを置く音
+  slide(dur = 0.5, gain = 0.25) {
+    if (!this.ctx) return;
+    const c = this.ctx;
+    const t = c.currentTime;
+    const src = this._noise(dur);
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 900;
+    f.Q.value = 0.8;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+  }
+
+  card() {
+    if (!this.ctx) return;
+    this.slide(0.12, 0.35);
+    this._tick(this.ctx.currentTime + 0.08, { freq: 1500, gain: 0.3, dur: 0.03, q: 2 });
+  }
+
   bang() {
     if (!this.ctx) return;
     const c = this.ctx;

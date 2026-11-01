@@ -69,6 +69,21 @@
         z-index: 6;
       }
       #message.show { opacity: 1; }
+      #message { white-space: pre-line; }
+      #hand {
+        position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 70px); transform: translateX(-50%);
+        z-index: 8; text-align: center;
+      }
+      #hand .title { font: bold 15px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #f3e2bd; text-shadow: 0 1px 4px #000; margin-bottom: 8px; }
+      #hand .cards { display: flex; gap: 8px; justify-content: center; }
+      #hand button {
+        width: 54px; height: 78px; border-radius: 7px; border: 2px solid #6a4a2a; cursor: pointer;
+        background: #efe4c8; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+        font: bold 34px Georgia, "Times New Roman", serif; color: #1a1410; transition: transform 0.12s;
+      }
+      #hand button.red { color: #9a1a14; }
+      #hand button:hover { transform: translateY(-8px); }
+      body.mobile #hand button { width: 48px; height: 70px; font-size: 30px; }
       #game-controls {
         position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 62px); transform: translateX(-50%);
         display: flex; gap: 10px; z-index: 7;
@@ -82,7 +97,7 @@
       #btn-trigger { background: rgba(150, 20, 20, 0.9) !important; font-size: 20px !important; padding: 16px 34px !important; }
       body.mobile #players { top: calc(max(16px, env(safe-area-inset-top)) + 96px); font-size: 12px; line-height: 1.7; }
       body.mobile #chamber-info { top: calc(max(16px, env(safe-area-inset-top)) + 228px); }
-      body.mobile #message { font-size: 20px; top: 40%; }
+      body.mobile #message { font-size: 17px; top: 40%; max-width: 92vw; }
       #overlay { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
       #error {
         display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
@@ -99,7 +114,7 @@
       <div class="help-pc">クリック/ドラッグ:見回す　Esc:マウス解除</div>
       <div class="help-pc">1〜4:席を移動　F:自由移動モード切替</div>
       <div class="help-pc">自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
-      <div class="help-pc">R:ラウンド開始(仮)　Enter:引き金を引く</div>
+      <div class="help-pc">R:ナンバーズ開始　1〜6:カードを選ぶ　Enter:引き金を引く</div>
       <div>右の名前をタップ → その人を最下位にする(テスト用)</div>
       <div class="help-touch">画面をなぞって見回す / 下のボタンで席を移動</div>
     </div>
@@ -114,9 +129,16 @@
     <div id="overlay"></div>
     <div id="message"></div>
     <div id="game-controls">
-      <button id="btn-round">ラウンド開始(仮)</button>
+      <button id="btn-round">ナンバーズ開始</button>
       <button id="btn-trigger" style="display: none">引き金を引く</button>
       <button id="btn-restart" style="display: none">もう一度</button>
+    </div>
+    <div id="hand" style="display: none">
+      <div class="title">カードを 1 枚選べ(大きい数字が勝ち・被るか一番小さいと最下位)</div>
+      <div class="cards">
+        <button data-n="1" class="red">1</button><button data-n="2">2</button><button data-n="3" class="red">3</button>
+        <button data-n="4">4</button><button data-n="5" class="red">5</button><button data-n="6">6</button>
+      </div>
     </div>
     <div id="error"></div>
     <script>

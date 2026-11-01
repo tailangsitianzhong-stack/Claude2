@@ -88,10 +88,6 @@ export class RouletteGame {
       overlay: document.getElementById('overlay'),
       seatButtons: document.getElementById('seat-buttons'),
     };
-    this.ui.round.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.round();
-    });
     this.ui.restart.addEventListener('click', (e) => {
       e.stopPropagation();
       this.restart();
@@ -101,7 +97,6 @@ export class RouletteGame {
       this._resolveTrigger?.();
     });
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'KeyR') this.round();
       if ((e.code === 'Enter' || e.code === 'Space') && this._resolveTrigger) {
         e.preventDefault();
         this._resolveTrigger();
@@ -171,7 +166,9 @@ export class RouletteGame {
         // 一人称:手首から右肩の方向(画面の右下手前)へ前腕を伸ばす
         this.camera.updateMatrixWorld(true);
         const shoulder = this.camera.localToWorld(V(0.24, -0.36, 0.12));
-        const d = shoulder.sub(wrist).normalize();
+        const d = shoulder.sub(wrist);
+        if (this.playerFore) this.playerFore.scale.y = d.length();
+        d.normalize();
         this.playerArm.position.copy(wrist);
         this.playerArm.quaternion.setFromUnitVectors(V(0, 1, 0), d);
       }
@@ -210,17 +207,30 @@ export class RouletteGame {
   }
 
   // テーブルに置いた姿勢。グリップを seat の人の方へ向け、銃身は横向きに寝かせる
-  // center: true ならテーブル中央、false ならその人の手前に置く
-  tablePose(seatIndex, { center = true, jitter = 0 } = {}) {
+  // dist: テーブル中央からその人の方向への距離、lateral: その人から見て右(+)・左(-)へのずれ
+  tablePose(seatIndex, { center = false, dist = 0.42, lateral = 0, jitter = 0 } = {}) {
     const p = this.tablePos.clone();
     p.y = this.tableTop + 0.0165;
     const ch = this.players[seatIndex].character;
     const dir = ch.position.clone().sub(this.tablePos).setY(0).normalize();
-    if (center) p.addScaledVector(dir, 0.04);
-    else p.addScaledVector(dir, 0.42);
+    const right = V(dir.z, 0, -dir.x); // 席からテーブル中央を向いたときの右手側
+    p.addScaledVector(dir, center ? 0.04 : dist).addScaledVector(right, lateral);
     const yaw = Math.atan2(dir.x, dir.z) + (Math.random() - 0.5) * 2 * jitter;
     const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, yaw, 0, 'YXZ'));
     return { p, q };
+  }
+
+  // 座ったまま(少し前かがみで)手が届く、その人の右手前の位置
+  gunSpot(seat) {
+    return this.tablePose(seat, { dist: 0.5, lateral: 0.1 });
+  }
+
+  // 銃をテーブルの上で滑らせて、その人の手前まで届ける
+  async slideGunTo(seat) {
+    const spot = this.gunSpot(seat);
+    if (this.gun.position.distanceTo(spot.p) < 0.05) return;
+    this.sfx.slide?.(0.6);
+    await this.moveGun(() => spot, 0.7, 0);
   }
 
   // キャラクターの胸の前(弾を込めてシリンダーを回す位置)
@@ -366,8 +376,10 @@ export class RouletteGame {
     const pre = this.presets[this.playerSeat];
     this.playerArm.clear();
     const sleeve = new THREE.MeshStandardMaterial({ color: pre.coat ?? pre.shirt, roughness: 0.85 });
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.36, 6, 14), sleeve);
-    fore.position.y = 0.23;
+    const foreGeo = new THREE.CylinderGeometry(0.042, 0.05, 1, 14);
+    foreGeo.translate(0, 0.5, 0); // 手首(原点)から +y 方向へ長さ 1
+    const fore = new THREE.Mesh(foreGeo, sleeve);
+    this.playerFore = fore;
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 0.035, 16), sleeve);
     cuff.position.y = 0.05;
     this.playerArm.add(fore, cuff);
@@ -375,22 +387,42 @@ export class RouletteGame {
     this.renderPlayers();
   }
 
+  // テスト用:指定した人(なければランダム)を最下位にしてルーレットだけ行う
   async round(forceSeat = null) {
+    await this.runRound(async () => {
+      const alive = this.players.filter((p) => p.alive);
+      let loser = forceSeat !== null ? this.players[forceSeat] : alive[Math.floor(Math.random() * alive.length)];
+      if (!loser.alive) loser = alive[0];
+      return [loser];
+    });
+  }
+
+  // ミニゲームを 1 回遊び、最下位になった人(複数なら順番に)が引き金を引く
+  async playMinigame(minigame) {
+    await this.runRound(() => minigame.play(this), () => minigame.cleanup?.());
+  }
+
+  async runRound(getLosers, cleanup = null) {
     this.sfx.unlock();
     if (this.busy || this.over) return;
     this.busy = true;
     this.ui.round.disabled = true;
+    this.ui.round.style.display = 'none'; // ラウンド中はボタンを隠す
     try {
       if (!this.started) {
         this.start();
         this.say('弾を 1 発だけ込める。生き残れるのは 1 人だけだ。');
         await this.wait(2.2);
       }
-      const alive = this.players.filter((p) => p.alive);
-      let loser = forceSeat !== null ? this.players[forceSeat] : alive[Math.floor(Math.random() * alive.length)];
-      if (!loser.alive) loser = alive[0];
-      if (loser.seat === this.playerSeat) await this.playerTurn(loser);
-      else await this.npcTurn(loser);
+      const losers = await getLosers();
+      for (const loser of losers) {
+        if (!loser.alive) continue;
+        if (this.players.filter((p) => p.alive).length <= 1) break;
+        if (loser.seat === this.playerSeat) await this.playerTurn(loser);
+        else await this.npcTurn(loser);
+        await this.wait(0.4);
+      }
+      cleanup?.();
 
       const left = this.players.filter((p) => p.alive);
       if (left.length === 1) {
@@ -417,10 +449,14 @@ export class RouletteGame {
     if (!this.playerDead) this.controls.setFocus(headPos);
     this.say(`最下位:${pl.name}`);
     u.focus = this.gun.position;
-    await this.wait(1.6);
+    await this.wait(0.8);
+    await this.slideGunTo(pl.seat);
+    await this.wait(0.3);
 
-    // 銃に手を伸ばす
+    // 前かがみになって銃に手を伸ばす
     const arm = u.arms[0];
+    u.reachTarget = 0.38;
+    await this.wait(0.2);
     arm.controlled = true;
     const start = arm.target.clone();
     const wristW = this.gun.localToWorld(this.gripHands[pl.seat].userData.wrist.clone());
@@ -428,6 +464,7 @@ export class RouletteGame {
     await this.tween(0.7, (t) => arm.target.lerpVectors(start, wristL, easeInOut(t)));
     this.setHolder(pl.seat);
     await this.liftGun();
+    u.reachTarget = 0;
 
     if (!this.loaded) {
       this.say(`${pl.name} が弾を込め、シリンダーを回す…`);
@@ -460,10 +497,13 @@ export class RouletteGame {
       u.headOverride = null;
       u.leanOffset = -0.14; // 安堵でのけぞる
       await this.wait(1.1);
-      await this.moveGun(() => this.tablePose(pl.seat), 0.9, 0.12);
+      // 自分の手前に置く(前かがみで)
+      u.reachTarget = 0.34;
+      await this.moveGun(() => this.gunSpot(pl.seat), 0.9, 0.1);
       this.setHolder(null);
       arm.controlled = false;
       arm.handQuat = null;
+      u.reachTarget = 0;
     } else {
       this.sfx.bang();
       this.muzzleFlash();
@@ -493,7 +533,9 @@ export class RouletteGame {
     this.controls.setFocus(this.gun.position.clone());
     this.focusOthers(pl, this.camera.position);
     this.say('最下位:あなた');
-    await this.wait(1.6);
+    await this.wait(0.8);
+    await this.slideGunTo(pl.seat);
+    await this.wait(0.3);
 
     this.controls.setFocus(null);
     this.controls.setLookTarget(0, -0.08);
@@ -514,11 +556,9 @@ export class RouletteGame {
     this.say('引き金を引け');
     document.exitPointerLock?.();
     this.ui.trigger.style.display = '';
-    this.ui.round.style.display = 'none';
     await new Promise((res) => (this._resolveTrigger = res));
     this._resolveTrigger = null;
     this.ui.trigger.style.display = 'none';
-    this.ui.round.style.display = '';
     this.sfx.heartbeat(false);
 
     this.dropHammer();
@@ -529,7 +569,7 @@ export class RouletteGame {
       this.say('カチッ…… 生き延びた', 2.4);
       await this.wait(1.1);
       this.controls.setLookTarget(null);
-      await this.moveGun(() => this.tablePose(pl.seat), 0.9, 0.12);
+      await this.moveGun(() => this.gunSpot(pl.seat), 0.9, 0.12);
       this.setHolder(null);
     } else {
       this.sfx.bang();

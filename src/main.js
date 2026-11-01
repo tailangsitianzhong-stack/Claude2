@@ -7,6 +7,7 @@ import { SeatControls } from './controls.js';
 import { createRevolver, createCartridge } from './props/revolver.js';
 import { createCharacter, updateCharacter, CHARACTER_PRESETS } from './props/character.js';
 import { RouletteGame } from './game/roulette.js';
+import { NumbersGame } from './game/numbers.js';
 import { createRng } from './textures.js';
 
 // スマホ・タブレットでは画質を落として軽くする
@@ -201,6 +202,16 @@ game = new RouletteGame({
   names: CHARACTER_PRESETS.map((p) => p.name),
   presets: CHARACTER_PRESETS,
 });
+// ミニゲーム(今はナンバーズのみ)
+const numbers = new NumbersGame(scene);
+const startMinigame = () => game.playMinigame(numbers);
+document.getElementById('btn-round').addEventListener('click', (e) => {
+  e.stopPropagation();
+  startMinigame();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyR') startMinigame();
+});
 updateStatus();
 
 // 画面上の席ボタン(スマホ用。PC でも使える)
@@ -240,6 +251,7 @@ window.__saloon = {
   renderer,
   characters,
   revolver,
+  numbers,
   get game() {
     return game;
   },
