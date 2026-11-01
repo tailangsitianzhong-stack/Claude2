@@ -15,6 +15,9 @@ import { QuickDraw } from './game/quickdraw.js';
 import { Blackjack } from './game/blackjack.js';
 import { LastChip } from './game/lastchip.js';
 import { ThreeCardPoker } from './game/poker3.js';
+import { Spoof } from './game/spoof.js';
+import { GoldAuction } from './game/auction.js';
+import { ShotSlide } from './game/shotslide.js';
 import { createRng } from './textures.js';
 
 // スマホ・タブレットでは画質を落として軽くする
@@ -220,6 +223,9 @@ const minigames = {
   blackjack: new Blackjack(scene),
   lastchip: new LastChip(scene),
   poker: new ThreeCardPoker(scene),
+  spoof: new Spoof(scene),
+  auction: new GoldAuction(scene),
+  shotslide: new ShotSlide(scene),
 };
 game.minigames = Object.values(minigames);
 game.selector = new MinigameSelector();
