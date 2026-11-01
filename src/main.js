@@ -6,6 +6,7 @@ import { createBarCounter, createBackBar } from './props/bar.js';
 import { SeatControls } from './controls.js';
 import { createRevolver, createCartridge } from './props/revolver.js';
 import { createCharacter, updateCharacter, CHARACTER_PRESETS } from './props/character.js';
+import { RouletteGame } from './game/roulette.js';
 import { createRng } from './textures.js';
 
 // スマホ・タブレットでは画質を落として軽くする
@@ -55,12 +56,10 @@ for (let i = 0; i < 4; i++) {
 
 // ─── テーブル中央のリボルバーと弾 ───
 const revolver = createRevolver();
-revolver.rotation.set(-Math.PI / 2, 0, 0); // 横向きに寝かせる
-const revolverHolder = new THREE.Group();
-revolverHolder.add(revolver);
-revolverHolder.position.set(tablePos.x + 0.02, table.userData.height + 0.0165, tablePos.z + 0.03);
-revolverHolder.rotation.y = 0.55;
-scene.add(revolverHolder);
+// テーブルに横向きに寝かせる
+revolver.position.set(tablePos.x + 0.02, table.userData.height + 0.0165, tablePos.z + 0.03);
+revolver.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0.55, 0, 'YXZ'));
+scene.add(revolver);
 const bullet = createCartridge();
 bullet.position.set(tablePos.x - 0.16, table.userData.height, tablePos.z + 0.1);
 scene.add(bullet);
@@ -73,7 +72,6 @@ const characters = CHARACTER_PRESETS.map((preset, i) => {
   scene.add(c);
   return c;
 });
-const revolverWorld = revolverHolder.position.clone();
 
 // テーブルのフェルトからの照り返し(顔を下から少し照らす)
 const bounce = new THREE.PointLight(0xffc890, 2.2, 2.6, 2);
@@ -181,12 +179,28 @@ const controls = new SeatControls(camera, canvas, seats, {
   max: new THREE.Vector3(ROOM.W / 2 - 0.3, ROOM.H - 0.3, ROOM.D / 2 - 0.3),
 });
 const status = document.getElementById('status');
+let game = null;
 const updateStatus = () => {
-  characters.forEach((c, i) => (c.visible = controls.mode === 'free' || i !== controls.seatIndex));
+  characters.forEach((c, i) => (c.visible = controls.mode === 'free' || i !== controls.seatIndex || !!game?.playerDead));
+  game?.renderPlayers();
   status.textContent = controls.mode === 'seat' ? `席 ${controls.seatIndex + 1} に着席中` : '自由移動モード';
   document.querySelectorAll('#seat-buttons button').forEach((b) => b.classList.toggle('active', controls.mode === 'seat' && Number(b.dataset.seat) === controls.seatIndex));
 };
 controls.onChange = updateStatus;
+
+// ─── ロシアンルーレット ───
+game = new RouletteGame({
+  scene,
+  camera,
+  controls,
+  characters,
+  gun: revolver,
+  cartridge: bullet,
+  tablePos,
+  tableTop: table.userData.height,
+  names: CHARACTER_PRESETS.map((p) => p.name),
+  presets: CHARACTER_PRESETS,
+});
 updateStatus();
 
 // 画面上の席ボタン(スマホ用。PC でも使える)
@@ -225,15 +239,19 @@ window.__saloon = {
   },
   renderer,
   characters,
-  revolver: revolverHolder,
+  revolver,
+  get game() {
+    return game;
+  },
 };
 
 // ─── ループ ───
 const clock = new THREE.Clock();
 let t = 0;
-function frame(dt) {
+function frame(dt, render = true) {
   t += dt;
   controls.update(dt);
+  game.update(dt);
 
   // 炎の揺らぎ
   for (const [i, l] of lights.entries()) {
@@ -241,7 +259,7 @@ function frame(dt) {
     l.light.intensity = l.base * (1 + n * 0.06);
   }
   // キャラクターの待機モーション
-  const lookTargets = [camera.position, revolverWorld, revolverWorld, ...characters.map((c) => c.userData.head.getWorldPosition(new THREE.Vector3()))];
+  const lookTargets = [camera.position, revolver.position, revolver.position, ...characters.map((c) => c.userData.head.getWorldPosition(new THREE.Vector3()))];
   for (const c of characters) if (c.visible) updateCharacter(c, t, dt, lookTargets);
   // 振り子
   if (scene.userData.pendulum) scene.userData.pendulum.rotation.z = Math.sin(t * Math.PI) * 0.15;
@@ -255,13 +273,22 @@ function frame(dt) {
   }
   p.needsUpdate = true;
 
-  renderer.render(scene, camera);
+  if (render) renderer.render(scene, camera);
 }
 
 // ?still を付けると自動描画を止め、__saloon.renderOnce() で 1 枚ずつ描く(確認用)
 if (new URLSearchParams(location.search).has('still')) {
   window.__saloon.renderOnce = (steps = 60) => {
     for (let i = 0; i < steps - 1; i++) controls.update(1 / 30);
+    frame(1 / 30);
+  };
+  // 時間を進めてから 1 枚描く(演出の確認用)
+  window.__saloon.advance = async (sec) => {
+    const n = Math.round(sec * 30);
+    for (let i = 0; i < n - 1; i++) {
+      frame(1 / 30, false);
+      await new Promise((r) => setTimeout(r, 0)); // 演出の非同期処理を進める
+    }
     frame(1 / 30);
   };
 } else {

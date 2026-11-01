@@ -21,6 +21,10 @@ export class SeatControls {
     this.time = 0;
     this.sensitivity = 0.0022;
     this.onChange = () => {};
+    this.focus = null; // 自動で見る位置(ワールド座標)
+    this.lookTarget = null; // 自動で向ける首の角度 { yaw, pitch }
+    this.shake = 0; // 手ぶれの強さ
+    this.locked = false; // ゲーム中は席の移動・自由移動を禁止
 
     camera.position.copy(seats[0].eye);
     this._bind();
@@ -82,7 +86,27 @@ export class SeatControls {
     }
   }
 
+  setFocus(v) {
+    this.focus = v ? v.clone?.() ?? v : null;
+  }
+
+  setLookTarget(yaw, pitch) {
+    this.lookTarget = yaw === null || yaw === undefined ? null : { yaw, pitch };
+  }
+
+  // 観戦用の固定視点(自由移動モードとして扱う)
+  spectate(pos, target) {
+    this.mode = 'free';
+    this.camera.position.copy(pos);
+    this.camera.lookAt(target);
+    const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+    this.freeYaw = e.y;
+    this.freePitch = e.x;
+    this.onChange();
+  }
+
   setSeat(i) {
+    if (this.locked && i !== this.seatIndex) return;
     this.mode = 'seat';
     this.seatIndex = i;
     this.lookYaw = 0;
@@ -91,6 +115,7 @@ export class SeatControls {
   }
 
   toggleFree() {
+    if (this.locked) return;
     if (this.mode === 'seat') {
       this.mode = 'free';
       const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
@@ -113,7 +138,23 @@ export class SeatControls {
       // 呼吸による僅かな揺れ
       const breath = Math.sin(this.time * 1.4) * 0.004;
       cam.position.y += (seat.eye.y + breath - cam.position.y) * k;
+      // 自動で特定の方向を見る(演出用)
+      let want = this.lookTarget;
+      if (this.focus) {
+        const d = new THREE.Vector3().subVectors(this.focus, cam.position);
+        const yawW = Math.atan2(-d.x, -d.z);
+        want = { yaw: wrapAngle(yawW - this.baseYaw), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)) };
+      }
+      if (want) {
+        const kk = 1 - Math.exp(-dt * 3);
+        this.lookYaw += (clamp(want.yaw, -1.9, 1.9) - this.lookYaw) * kk;
+        this.lookPitch += (clamp(want.pitch, -1.1, 0.8) - this.lookPitch) * kk;
+      }
       cam.rotation.set(this.lookPitch, this.baseYaw + this.lookYaw, 0, 'YXZ');
+      if (this.shake > 0) {
+        cam.rotation.x += (Math.random() - 0.5) * 0.006 * this.shake + Math.sin(this.time * 9) * 0.002 * this.shake;
+        cam.rotation.y += (Math.random() - 0.5) * 0.006 * this.shake;
+      }
     } else {
       cam.rotation.set(this.freePitch, this.freeYaw, 0, 'YXZ');
       const speed = (this.keys.has('ShiftLeft') ? 5 : 2.2) * dt;

@@ -30,7 +30,7 @@ export function createRevolver() {
   const blued = new THREE.MeshStandardMaterial({ color: 0x23262b, metalness: 1, roughness: 0.32 });
   const worn = new THREE.MeshStandardMaterial({ color: 0x5a5650, metalness: 1, roughness: 0.4 }); // 擦れて地金が出た部分
   const caseHard = new THREE.MeshStandardMaterial({ color: 0x4a4038, metalness: 1, roughness: 0.3 }); // 焼き入れのフレーム
-  const walnut = new THREE.MeshStandardMaterial({ color: 0x4a2412, roughness: 0.45 });
+  const walnut = new THREE.MeshStandardMaterial({ color: 0x2e140a, roughness: 0.55 });
   const brass = new THREE.MeshStandardMaterial({ color: 0xc9a14a, metalness: 1, roughness: 0.3 });
   const hole = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 });
 
@@ -133,7 +133,12 @@ export function createRevolver() {
   ham.lineTo(-0.054, 0.024);
   ham.lineTo(-0.052, 0.006);
   ham.closePath();
-  const hammer = extrude(ham, 0.007, caseHard, 0.001);
+  const hammerMesh = extrude(ham, 0.007, caseHard, 0.001);
+  // 撃鉄は根元を軸に回せるようにする(rotation.z を正にすると起きる)
+  hammerMesh.geometry.translate(0.046, 0.002, 0);
+  const hammer = new THREE.Group();
+  hammer.position.set(-0.046, -0.002, 0);
+  hammer.add(hammerMesh);
   gun.add(hammer);
 
   // グリップ(プラウハンドル形)
@@ -178,7 +183,13 @@ export function createRevolver() {
   trig.closePath();
   gun.add(extrude(trig, 0.004, blued, 0.0006));
 
-  gun.userData = { cylinder, hammer, chambers };
+  gun.userData = {
+    cylinder,
+    hammer,
+    chambers,
+    muzzle: new THREE.Vector3(0.236, 0, 0), // 銃口(銃のローカル座標)
+    grip: new THREE.Vector3(-0.062, -0.07, 0), // 握る位置
+  };
   return gun;
 }
 

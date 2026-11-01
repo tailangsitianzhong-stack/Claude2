@@ -41,6 +41,42 @@
         padding: 10px 16px; min-width: 64px;
       }
       #seat-buttons button.active { background: rgba(140, 100, 40, 0.85); color: #fff3d8; }
+      #players {
+        position: fixed; right: 16px; top: max(16px, env(safe-area-inset-top)); margin: 0; padding: 8px 12px;
+        list-style: none; font: 13px/1.9 "Hiragino Sans", "Noto Sans JP", sans-serif; color: #e8d5b0;
+        background: rgba(20, 12, 6, 0.6); border: 1px solid rgba(216, 178, 90, 0.35); border-radius: 6px;
+      }
+      #players li { cursor: pointer; white-space: nowrap; }
+      #players li .mark { display: inline-block; width: 1.4em; color: #7fbf6a; }
+      #players li.dead { color: #8a7a6a; text-decoration: line-through; }
+      #players li.dead .mark { color: #c0392b; }
+      #players li.me { color: #ffd98a; font-weight: bold; }
+      #chamber-info {
+        position: fixed; right: 16px; top: calc(max(16px, env(safe-area-inset-top)) + 150px);
+        font: 12px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #d8b25a; text-shadow: 0 1px 3px #000;
+      }
+      #message {
+        position: fixed; left: 50%; top: 22%; transform: translateX(-50%); max-width: 86vw; text-align: center;
+        font: bold 26px/1.5 Georgia, "Hiragino Mincho ProN", "Noto Serif JP", serif; color: #f3e2bd;
+        text-shadow: 0 2px 12px #000, 0 0 3px #000; opacity: 0; transition: opacity 0.35s; pointer-events: none;
+        z-index: 6;
+      }
+      #message.show { opacity: 1; }
+      #game-controls {
+        position: fixed; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 62px); transform: translateX(-50%);
+        display: flex; gap: 10px; z-index: 7;
+      }
+      #game-controls button {
+        font: bold 16px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #fff3d8; cursor: pointer;
+        background: rgba(90, 50, 20, 0.85); border: 1px solid rgba(216, 178, 90, 0.6); border-radius: 8px; padding: 12px 22px;
+      }
+      #game-controls button:disabled { opacity: 0.4; }
+      #game-controls button { white-space: nowrap; }
+      #btn-trigger { background: rgba(150, 20, 20, 0.9) !important; font-size: 20px !important; padding: 16px 34px !important; }
+      body.mobile #players { top: calc(max(16px, env(safe-area-inset-top)) + 96px); font-size: 12px; line-height: 1.7; }
+      body.mobile #chamber-info { top: calc(max(16px, env(safe-area-inset-top)) + 228px); }
+      body.mobile #message { font-size: 20px; top: 40%; }
+      #overlay { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
       #error {
         display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
         font: 12px/1.5 monospace; color: #ffd0c0; background: rgba(80, 10, 10, 0.85); border-radius: 6px;
@@ -56,6 +92,8 @@
       <div class="help-pc">クリック/ドラッグ:見回す　Esc:マウス解除</div>
       <div class="help-pc">1〜4:席を移動　F:自由移動モード切替</div>
       <div class="help-pc">自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
+      <div class="help-pc">R:ラウンド開始(仮)　Enter:引き金を引く</div>
+      <div>右の名前をタップ → その人を最下位にする(テスト用)</div>
       <div class="help-touch">画面をなぞって見回す / 下のボタンで席を移動</div>
     </div>
     <div id="seat-buttons">
@@ -63,6 +101,15 @@
       <button data-seat="1">席2</button>
       <button data-seat="2">席3</button>
       <button data-seat="3">席4</button>
+    </div>
+    <ul id="players"></ul>
+    <div id="chamber-info"></div>
+    <div id="overlay"></div>
+    <div id="message"></div>
+    <div id="game-controls">
+      <button id="btn-round">ラウンド開始(仮)</button>
+      <button id="btn-trigger" style="display: none">引き金を引く</button>
+      <button id="btn-restart" style="display: none">もう一度</button>
     </div>
     <div id="error"></div>
     <script>

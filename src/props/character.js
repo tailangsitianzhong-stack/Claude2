@@ -304,42 +304,52 @@ export function createCharacter(o) {
   head.position.set(0, 0.53, 0.01);
   torso.add(head);
 
-  // 腕:肩 → 肘 → 手(テーブルの縁に置く)
-  const lean = torso.rotation.x;
-  const toRoot = (v) => {
-    // 胴のローカル座標 → root 座標
-    const c = Math.cos(lean);
-    const s = Math.sin(lean);
-    return V(v.x, torso.position.y + v.y * c - v.z * s, torso.position.z + v.y * s + v.z * c);
-  };
-  const hands = o.hands ?? [V(-0.17, 0.84, 0.25), V(0.17, 0.84, 0.25)];
-  const elbows = o.elbows ?? [V(-0.27 * b, 0.72, 0.04), V(0.27 * b, 0.72, 0.04)];
-  [-1, 1].forEach((s, i) => {
-    const shoulder = toRoot(V(s * 0.19 * b, 0.4, 0));
-    sphere(root, 0.062 * b, sleeve, shoulder.x, shoulder.y, shoulder.z, 1, 1, 1, 14);
-    limb(root, shoulder, elbows[i], 0.05 * b, sleeve);
-    limb(root, elbows[i], hands[i], 0.043 * b, sleeve);
-    // 手(甲と親指)
-    const dir = new THREE.Vector3().subVectors(hands[i], elbows[i]).normalize();
+  // 腕:肩の位置は胴に追従し、手の目標位置に向けて肘を自動で曲げる(2 関節 IK)
+  const baseLean = torso.rotation.x;
+  const restHands = o.hands ?? [V(-0.17, 0.845, 0.22), V(0.17, 0.845, 0.22)];
+  const arms = [-1, 1].map((s, i) => {
+    const L1 = 0.29 * b;
+    const L2 = 0.28 * b;
+    const shoulderBall = sphere(root, 0.062 * b, sleeve, 0, 0, 0, 1, 1, 1, 14);
+    const upper = mesh(new THREE.CapsuleGeometry(0.05 * b, L1, 6, 14), sleeve);
+    const fore = mesh(new THREE.CapsuleGeometry(0.043 * b, L2, 6, 14), sleeve);
+    root.add(upper, fore);
     const hand = new THREE.Group();
-    hand.position.copy(hands[i]).addScaledVector(dir, 0.05);
-    hand.quaternion.setFromUnitVectors(V(0, 0, 1), V(dir.x, 0, dir.z).normalize());
-    sphere(hand, 0.045, skin, 0, 0, 0.015, 0.85, 0.36, 1.0, 16); // 手の甲
-    // 指はテーブルの縁に沿って下に曲げる
+    sphere(hand, 0.045, skin, 0, 0, 0.035, 0.85, 0.36, 1.0, 16); // 手の甲
+    // 指(先を下に曲げる)
     for (let f = 0; f < 4; f++) {
       const fx = -0.024 + f * 0.016;
       const len = f === 0 || f === 3 ? 0.9 : 1;
-      limb(hand, V(fx, 0.0, 0.05), V(fx * 1.05, -0.012, 0.072 * len), 0.0085, skin);
-      limb(hand, V(fx * 1.05, -0.012, 0.072 * len), V(fx * 1.05, -0.034, 0.08 * len), 0.008, skin);
+      limb(hand, V(fx, 0.0, 0.07), V(fx * 1.05, -0.012, 0.092 * len), 0.0085, skin);
+      limb(hand, V(fx * 1.05, -0.012, 0.092 * len), V(fx * 1.05, -0.034, 0.1 * len), 0.008, skin);
     }
-    limb(hand, V(-s * 0.03, -0.004, 0.0), V(-s * 0.042, -0.012, 0.04), 0.01, skin); // 親指
+    limb(hand, V(-s * 0.03, -0.004, 0.02), V(-s * 0.042, -0.012, 0.06), 0.01, skin); // 親指
     root.add(hand);
+    return {
+      s,
+      L1,
+      L2,
+      shoulderBall,
+      upper,
+      fore,
+      hand,
+      shoulderLocal: V(s * 0.19 * b, 0.4, 0),
+      rest: restHands[i].clone(),
+      target: restHands[i].clone(),
+      handQuat: null, // 指定があれば手の向きをこれに合わせる(root 座標)
+      pole: V(s * 0.35, -0.8, -0.45),
+      controlled: false, // true の間はゲーム側が target を毎フレーム決める
+    };
   });
 
   root.userData = {
     torso,
     head,
+    arms,
     eyes: head.userData.eyes,
+    baseLean,
+    lean: baseLean,
+    leanOffset: 0, // 一時的な前傾・のけぞり(びくっとする等)
     breath: Math.random() * 10,
     nextLook: 0,
     nextBlink: 1 + Math.random() * 3,
@@ -347,50 +357,168 @@ export function createCharacter(o) {
     lookYaw: 0,
     lookPitch: 0,
     target: null,
+    focus: null, // 強制的に見る対象(ワールド座標)
+    headOverride: null, // { yaw, pitch } 指定時は視線よりも優先
+    eyesClosed: false,
+    tremble: 0, // 0〜1 震えの強さ
+    dead: false,
+    deathT: 0,
   };
   return root;
 }
 
-// 毎フレームの待機モーション(呼吸・視線・まばたき)
+// 2 点を結ぶ部材の位置と向きを合わせる
+const _up = V(0, 1, 0);
+const _z = V(0, 0, 1);
+function placeLimb(m, a, b) {
+  const d = new THREE.Vector3().subVectors(b, a);
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.quaternion.setFromUnitVectors(_up, d.normalize());
+}
+
+// 2 関節 IK。target・肩の位置はキャラクターの root 座標
+function solveArm(arm, torso) {
+  const sh = arm.shoulderLocal.clone().applyMatrix4(torso.matrix);
+  const d = new THREE.Vector3().subVectors(arm.target, sh);
+  let dist = d.length();
+  const maxR = arm.L1 + arm.L2 - 0.002;
+  if (dist > maxR) {
+    d.setLength(maxR);
+    dist = maxR;
+  }
+  dist = Math.max(dist, 0.05);
+  const dir = d.clone().normalize();
+  const cosA = THREE.MathUtils.clamp((arm.L1 ** 2 + dist ** 2 - arm.L2 ** 2) / (2 * arm.L1 * dist), -1, 1);
+  const a = Math.acos(cosA);
+  const pole = arm.pole.clone().addScaledVector(dir, -arm.pole.dot(dir)).normalize();
+  const elbow = sh.clone().addScaledVector(dir, Math.cos(a) * arm.L1).addScaledVector(pole, Math.sin(a) * arm.L1);
+  const wrist = sh.clone().add(d);
+  arm.shoulderBall.position.copy(sh);
+  placeLimb(arm.upper, sh, elbow);
+  placeLimb(arm.fore, elbow, wrist);
+  arm.hand.position.copy(wrist);
+  if (arm.handQuat) arm.hand.quaternion.copy(arm.handQuat);
+  else {
+    const fd = new THREE.Vector3().subVectors(wrist, elbow);
+    fd.y = Math.min(fd.y, 0) * 0.6;
+    arm.hand.quaternion.setFromUnitVectors(_z, fd.normalize());
+  }
+  return sh;
+}
+
+// 毎フレームの動き(呼吸・視線・まばたき・腕・死亡時の崩れ落ち)
 const tmp = new THREE.Vector3();
 export function updateCharacter(ch, t, dt, targets) {
   const u = ch.userData;
   const k = 1 - Math.exp(-dt * 4);
 
-  // 呼吸
-  const br = Math.sin(t * 1.3 + u.breath);
-  u.torso.scale.set(1 + br * 0.006, 1 + br * 0.008, 1 + br * 0.012);
+  if (u.dead) {
+    // 撃たれてテーブルに突っ伏す
+    u.deathT = Math.min(1, u.deathT + dt * 1.6);
+    const e = 1 - (1 - u.deathT) ** 3;
+    u.torso.rotation.x = THREE.MathUtils.lerp(u.lean, 0.82, e);
+    u.torso.rotation.z = THREE.MathUtils.lerp(0, 0.12, e);
+    u.head.rotation.set(THREE.MathUtils.lerp(u.lookPitch, 0.75, e), THREE.MathUtils.lerp(u.lookYaw, 0.35, e), 0, 'YXZ');
+    for (const ey of u.eyes) ey.scale.y = 0.08;
+    u.torso.updateMatrix();
+    for (const arm of u.arms) {
+      if (arm.controlled) continue;
+      arm.handQuat = null;
+      if (arm.s < 0) {
+        // 銃を持っていた腕はだらりと垂れる
+        const sh = arm.shoulderLocal.clone().applyMatrix4(u.torso.matrix);
+        arm.target.lerp(sh.add(V(arm.s * 0.06, -0.55, 0.08)), k * 2);
+      } else {
+        arm.target.lerp(V(0.14, 0.84, 0.3), k);
+      }
+      solveArm(arm, u.torso);
+    }
+    return;
+  }
 
-  // 数秒ごとに見る対象を変える(プレイヤー・銃・他のキャラ)
+  // 前傾(びくっとした後などは徐々に戻る)
+  u.leanOffset += (0 - u.leanOffset) * (1 - Math.exp(-dt * 2));
+  u.torso.rotation.x = u.lean + u.leanOffset;
+  u.torso.rotation.z = 0;
+
+  // 呼吸と震え
+  const br = Math.sin(t * 1.3 + u.breath);
+  const tr = u.tremble;
+  u.torso.scale.set(1 + br * 0.006, 1 + br * 0.008, 1 + br * 0.012);
+  if (tr > 0) {
+    u.torso.rotation.x += (Math.random() - 0.5) * 0.012 * tr;
+    u.torso.rotation.z = (Math.random() - 0.5) * 0.01 * tr;
+  }
+
+  // 視線
   u.nextLook -= dt;
   if (u.nextLook <= 0) {
     u.target = targets[Math.floor(Math.random() * targets.length)];
     u.nextLook = 1.5 + Math.random() * 4;
   }
-  if (u.target) {
-    tmp.copy(u.target);
+  const tgt = u.focus ?? u.target;
+  if (u.headOverride) {
+    u.lookYaw += (u.headOverride.yaw - u.lookYaw) * k;
+    u.lookPitch += (u.headOverride.pitch - u.lookPitch) * k;
+  } else if (tgt) {
+    tmp.copy(tgt);
     u.head.parent.worldToLocal(tmp);
     tmp.sub(u.head.position);
     tmp.y -= 0.1; // 目の高さ分
-    if (tmp.lengthSq() < 0.09) u.nextLook = 0; // 自分自身を選んだら選び直す
+    if (tmp.lengthSq() < 0.09 && !u.focus) u.nextLook = 0; // 自分自身を選んだら選び直す
     const yaw = THREE.MathUtils.clamp(Math.atan2(tmp.x, tmp.z), -1.1, 1.1);
     const pitch = THREE.MathUtils.clamp(Math.atan2(-tmp.y, Math.hypot(tmp.x, tmp.z)), -0.4, 0.6);
-    u.lookYaw += (yaw - u.lookYaw) * k;
-    u.lookPitch += (pitch - u.lookPitch) * k;
+    const kk = u.focus ? k * 2 : k;
+    u.lookYaw += (yaw - u.lookYaw) * kk;
+    u.lookPitch += (pitch - u.lookPitch) * kk;
   }
-  u.head.rotation.set(u.lookPitch, u.lookYaw, 0, 'YXZ');
+  const jitter = tr * 0.02;
+  u.head.rotation.set(u.lookPitch + (Math.random() - 0.5) * jitter, u.lookYaw + (Math.random() - 0.5) * jitter, 0, 'YXZ');
 
-  // まばたき
-  u.nextBlink -= dt;
-  if (u.nextBlink <= 0) {
-    u.blinkT = 0;
-    u.nextBlink = 2 + Math.random() * 4;
-  }
-  if (u.blinkT >= 0) {
-    u.blinkT += dt;
-    const s = u.blinkT < 0.15 ? Math.abs(Math.cos((u.blinkT / 0.15) * Math.PI)) : 1;
+  // まばたき(目を閉じている間は閉じたまま)
+  if (u.eyesClosed) {
+    for (const e of u.eyes) e.scale.y += (0.08 - e.scale.y) * k * 3;
+  } else {
+    u.nextBlink -= dt;
+    if (u.nextBlink <= 0) {
+      u.blinkT = 0;
+      u.nextBlink = 2 + Math.random() * 4;
+    }
+    let s = 1;
+    if (u.blinkT >= 0) {
+      u.blinkT += dt;
+      s = u.blinkT < 0.15 ? Math.abs(Math.cos((u.blinkT / 0.15) * Math.PI)) : 1;
+      if (u.blinkT >= 0.15) u.blinkT = -1;
+    }
     for (const e of u.eyes) e.scale.y = Math.max(0.08, s);
-    if (u.blinkT >= 0.15) u.blinkT = -1;
+  }
+
+  // 腕
+  u.torso.updateMatrix();
+  for (const arm of u.arms) {
+    if (!arm.controlled) {
+      arm.target.lerp(arm.rest, k * 2);
+      arm.handQuat = null;
+    }
+    solveArm(arm, u.torso);
+  }
+}
+
+// キャラクターの状態を初期化する(もう一度遊ぶとき)
+export function resetCharacter(ch) {
+  const u = ch.userData;
+  u.dead = false;
+  u.deathT = 0;
+  u.focus = null;
+  u.headOverride = null;
+  u.eyesClosed = false;
+  u.tremble = 0;
+  u.leanOffset = 0;
+  u.torso.rotation.set(u.baseLean, 0, 0);
+  for (const arm of u.arms) {
+    arm.controlled = false;
+    arm.handQuat = null;
+    arm.target.copy(arm.rest);
   }
 }
 
