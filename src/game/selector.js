@@ -8,7 +8,7 @@ export class MinigameSelector {
   }
 
   async pick(game, minigames) {
-    const target = Math.floor(Math.random() * minigames.length);
+    const target = Math.floor(game.rand() * minigames.length);
     const n = minigames.length;
     // 何周か回ってから target で止まる
     const steps = n * (minigames.length > 1 ? 5 : 2) + target;

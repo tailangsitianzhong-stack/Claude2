@@ -10,6 +10,7 @@ import { RouletteGame } from './game/roulette.js';
 import { NumbersGame } from './game/numbers.js';
 import { BlindHighLow } from './game/blindhl.js';
 import { MinigameSelector } from './game/selector.js';
+import { Lobby } from './net/lobby.js';
 import { ChickenDice } from './game/chickendice.js';
 import { QuickDraw } from './game/quickdraw.js';
 import { Blackjack } from './game/blackjack.js';
@@ -192,7 +193,10 @@ const controls = new SeatControls(camera, canvas, seats, {
 const status = document.getElementById('status');
 let game = null;
 const updateStatus = () => {
-  characters.forEach((c, i) => (c.visible = controls.mode === 'free' || i !== controls.seatIndex || !!game?.playerDead));
+  characters.forEach((c, i) => {
+    const present = game ? game.players[i].present : true;
+    c.visible = present && (controls.mode === 'free' || i !== controls.seatIndex || !!game?.playerDead);
+  });
   game?.renderPlayers();
   status.textContent = controls.mode === 'seat' ? `席 ${controls.seatIndex + 1} に着席中` : '自由移動モード';
   document.querySelectorAll('#seat-buttons button').forEach((b) => b.classList.toggle('active', controls.mode === 'seat' && Number(b.dataset.seat) === controls.seatIndex));
@@ -229,13 +233,9 @@ const minigames = {
 };
 game.minigames = Object.values(minigames);
 game.selector = new MinigameSelector();
-document.getElementById('btn-round').addEventListener('click', (e) => {
-  e.stopPropagation();
-  game.startMatch();
-});
-window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyR') game.startMatch();
-});
+// スタート画面(人数・ひとりで遊ぶ・通信対戦)
+game.onSetup = updateStatus;
+const lobby = new Lobby(game, controls, updateStatus);
 updateStatus();
 
 // 画面上の席ボタン(スマホ用。PC でも使える)
@@ -263,6 +263,7 @@ fitCamera();
 window.__saloon = {
   controls,
   minigames,
+  lobby,
   camera,
   setView(pos, target) {
     controls.mode = 'free';

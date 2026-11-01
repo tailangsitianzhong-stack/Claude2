@@ -20,17 +20,17 @@ export class LastChip {
   }
 
   // AI:相手に「4 で割って 1 余る数」を残すのが必勝形。たまに読み違える
-  aiTake(remaining) {
+  aiTake(game, p, remaining) {
     if (remaining <= 4) return Math.max(1, remaining - 1);
     const good = (remaining - 1) % 4;
-    if (good !== 0 && Math.random() < 0.8) return good;
-    return 1 + Math.floor(Math.random() * 3);
+    if (good !== 0 && game.rand(p.seat) < 0.8) return good;
+    return 1 + Math.floor(game.rand(p.seat) * 3);
   }
 
   async play(game) {
     const alive = game.players.filter((p) => p.alive);
-    let turn = Math.floor(Math.random() * alive.length);
-    let remaining = 17 + Math.floor(Math.random() * 7);
+    let turn = Math.floor(game.rand() * alive.length);
+    let remaining = 17 + Math.floor(game.rand() * 7);
     game.say(
       this.firstTime
         ? `ラスト・チップ:順番にチップを 1〜3 枚取れ。\n最後の 1 枚を取った者が撃つ。`
@@ -62,17 +62,19 @@ export class LastChip {
 
     for (;;) {
       const p = alive[turn % alive.length];
-      let n;
-      if (isMe(game, p)) {
-        n = await game.choose(
-          [1, 2, 3].map((k) => ({ label: `${k} 枚取る`, value: k, disabled: k > remaining })),
-          `残り ${remaining} 枚。何枚取る?`,
-        );
-      } else {
-        game.say(`${label(game, p)} の番(残り ${remaining} 枚)`);
-        await game.wait(0.9 + Math.random() * 0.8);
-        n = Math.min(remaining, this.aiTake(remaining));
-      }
+      if (!isMe(game, p)) game.say(`${label(game, p)} の番(残り ${remaining} 枚)`);
+      const n = await game.decide(
+        p,
+        () =>
+          game.choose(
+            [1, 2, 3].map((k) => ({ label: `${k} 枚取る`, value: k, disabled: k > remaining })),
+            `残り ${remaining} 枚。何枚取る?`,
+          ),
+        async () => {
+          await game.wait(0.9 + game.rand(p.seat) * 0.8);
+          return Math.min(remaining, this.aiTake(game, p, remaining));
+        },
+      );
       // 上から n 枚を、その人の手前へ
       const pile = taken.get(p.seat);
       const moving = chips.splice(chips.length - n, n);

@@ -108,9 +108,9 @@ function createThumbHand(skinColor) {
   return g;
 }
 
-function shuffle(a) {
+function shuffle(a, rnd) {
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rnd() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -139,7 +139,7 @@ export class BlindHighLow {
   }
 
   label(game, p) {
-    return p.seat === game.playerSeat ? 'あなた' : game.presets[p.seat].short;
+    return game.short(p);
   }
 
   cleanup(game) {
@@ -200,8 +200,9 @@ export class BlindHighLow {
     }
     pHigh /= total;
     pLow /= total;
-    let c = pHigh === pLow ? (Math.random() < 0.5 ? 'high' : 'low') : pHigh > pLow ? 'high' : 'low';
-    if (Math.random() < 0.08) c = c === 'high' ? 'low' : 'high'; // たまに読み違える
+    const r = this.game.rand(seat);
+    let c = pHigh === pLow ? (r < 0.5 ? 'high' : 'low') : pHigh > pLow ? 'high' : 'low';
+    if (this.game.rand(seat) < 0.08) c = c === 'high' ? 'low' : 'high'; // たまに読み違える
     return c;
   }
 
@@ -224,7 +225,7 @@ export class BlindHighLow {
     await game.wait(this.firstTime ? 4.2 : 2.0);
     this.firstTime = false;
 
-    const deck = shuffle(SUITS.flatMap((suit) => Array.from({ length: 10 }, (_, i) => ({ v: i + 1, suit }))));
+    const deck = shuffle(SUITS.flatMap((suit) => Array.from({ length: 10 }, (_, i) => ({ v: i + 1, suit }))), () => game.rand());
     const seen = []; // これまでに表になったカード
 
     for (let round = 1; round <= ROUNDS; round++) {
@@ -278,19 +279,28 @@ export class BlindHighLow {
 
       // 予想
       const choices = new Map();
-      for (const p of alive) if (p.seat !== game.playerSeat || game.playerDead) choices.set(p.seat, this.aiChoice(p.seat, deal, seen));
-      if (playerIn && !game.playerDead) {
-        game.say('あなたのカードは見えない。\n自分が一番大きいか、一番小さいか?');
-        this.buttons.style.display = '';
-        document.exitPointerLock?.();
-        const c = await new Promise((res) => (this._choose = res));
-        this._choose = null;
-        this.buttons.style.display = 'none';
-        choices.set(game.playerSeat, c);
-      } else {
-        game.say('全員が考えている……');
-        await game.wait(1.6);
-      }
+      const localIn = playerIn && !game.playerDead;
+      game.say(localIn ? 'あなたのカードは見えない。\n自分が一番大きいか、一番小さいか?' : '全員が考えている……');
+      await Promise.all(
+        alive.map(async (p) => {
+          const c = await game.decide(
+            p,
+            async () => {
+              this.buttons.style.display = '';
+              document.exitPointerLock?.();
+              const v = await new Promise((res) => (this._choose = res));
+              this._choose = null;
+              this.buttons.style.display = 'none';
+              return v;
+            },
+            async () => {
+              if (!localIn) await game.wait(1.6);
+              return this.aiChoice(p.seat, deal, seen);
+            },
+          );
+          choices.set(p.seat, c);
+        }),
+      );
 
       // 一斉にサイン
       game.say('せーの!');
@@ -357,7 +367,7 @@ export class BlindHighLow {
     // 結果
     const ranking = [...points].sort((a, b) => b[1] - a[1]);
     const low = ranking[ranking.length - 1][1];
-    const losers = shuffle(alive.filter((p) => points.get(p.seat) === low));
+    const losers = shuffle(alive.filter((p) => points.get(p.seat) === low), () => game.rand());
     const top = ranking[0];
     const name = (seat) => this.label(game, game.players[seat]);
     game.say(`最終結果:${ranking.map(([s, v]) => `${name(s)} ${v}点`).join(' ・ ')}\n勝ち:${name(top[0])}`);

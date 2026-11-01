@@ -127,7 +127,7 @@ export class ThreeCardPoker {
     await game.wait(this.firstTime ? 3.8 : 2.0);
     this.firstTime = false;
 
-    const deck = makeDeck();
+    const deck = makeDeck(() => game.rand());
     const hands = new Map(alive.map((p) => [p.seat, []]));
     const cards = new Map(alive.map((p) => [p.seat, []]));
     for (let k = 0; k < 3; k++) {
@@ -146,19 +146,29 @@ export class ThreeCardPoker {
 
     // 交換
     const swaps = new Map();
-    for (const p of alive) if (!isMe(game, p)) swaps.set(p.seat, this.aiSwap(hands.get(p.seat)));
-    if (me) swaps.set(me.seat, await this.pickSwap(game, hands.get(me.seat)));
-    else {
-      game.say('全員が手を考えている……');
-      await game.wait(1.6);
-    }
+    if (!me) game.say('全員が手を考えている……');
+    await Promise.all(
+      alive.map(async (p) => {
+        const sw = await game.decide(
+          p,
+          () => this.pickSwap(game, hands.get(p.seat)),
+          async () => {
+            if (!me) await game.wait(1.6);
+            return this.aiSwap(hands.get(p.seat));
+          },
+        );
+        swaps.set(p.seat, sw);
+      }),
+    );
+    // 交換で引くカードは、全員の端末で同じになるよう先に順番どおり引いておく
+    const drawn = new Map(alive.map((p) => [p.seat, swaps.get(p.seat).map(() => deck.pop())]));
     for (const p of alive) game.setFloat(p.seat, `交換 ${swaps.get(p.seat).length} 枚`);
     game.say('交換');
     await staggered(alive, 0.2, game, async (p) => {
-      for (const i of swaps.get(p.seat)) {
+      for (const [k, i] of swaps.get(p.seat).entries()) {
         const old = cards.get(p.seat)[i];
         old.parent?.remove(old);
-        const c = deck.pop();
+        const c = drawn.get(p.seat)[k];
         hands.get(p.seat)[i] = c;
         const card = createCard(c, false);
         this.objects.push(card);

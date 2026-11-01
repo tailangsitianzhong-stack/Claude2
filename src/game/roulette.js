@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { resetCharacter } from '../props/character.js';
 import { Sfx } from './audio.js';
 import { createGripHand } from '../props/gripHand.js';
+import { makeRng } from './rng.js';
 
 // true にすると毎回シリンダーを回し直す(確率は常に 1/6)
 const RESPIN_EACH_TURN = false;
@@ -34,7 +35,12 @@ export class RouletteGame {
     this.tableTop = tableTop;
     this.presets = presets;
     this.sfx = new Sfx();
-    this.players = characters.map((c, i) => ({ seat: i, name: names[i], character: c, alive: true }));
+    this.players = characters.map((c, i) => ({ seat: i, name: names[i], character: c, alive: true, present: true }));
+    // 席ごとの操作者:'local'(この端末の人)・'remote'(通信相手)・'cpu'・'absent'(空席)
+    this.controllers = ['local', 'cpu', 'cpu', 'cpu'];
+    this.humanNames = {};
+    this.net = null;
+    this.setSeed((Math.random() * 2 ** 32) >>> 0);
     this.tasks = [];
     this.started = false;
     this.busy = false;
@@ -107,6 +113,68 @@ export class RouletteGame {
     });
     this.renderPlayers();
     this.updateChamberInfo();
+  }
+
+  // ─── 乱数と判断(通信対戦では全員の端末で同じ結果になる) ───
+  setSeed(seed) {
+    this.seed = seed >>> 0;
+    this.rngs = new Map();
+    this.decisionCount = {};
+  }
+
+  // ゲームの進行に関わる乱数。seat を渡すとその席専用の乱数(処理の順番に左右されない)
+  rand(seat = -1) {
+    if (!this.rngs.has(seat)) this.rngs.set(seat, makeRng(this.seed ^ Math.imul(seat + 7, 0x9e3779b1)));
+    return this.rngs.get(seat)();
+  }
+
+  isHuman(p) {
+    const c = this.controllers[p.seat];
+    return c === 'local' || c === 'remote';
+  }
+
+  // 判断:この端末の人ならボタンなどで選ばせて全員に送る、通信相手なら届くのを待つ、CPU なら AI
+  async decide(p, uiFn, aiFn) {
+    const n = (this.decisionCount[p.seat] = (this.decisionCount[p.seat] ?? 0) + 1);
+    const key = `${p.seat}:${n}`;
+    const c = this.controllers[p.seat];
+    if (c === 'local') {
+      const v = await uiFn();
+      this.net?.sendInput(key, v);
+      return v;
+    }
+    if (c === 'remote' && this.net) {
+      const v = await this.net.waitInput(key, p.seat);
+      if (v !== undefined) return v;
+      // 通信が切れた人は CPU が代わりに判断する
+      this.controllers[p.seat] = 'cpu';
+    }
+    return aiFn();
+  }
+
+  // 名前(短い呼び名)
+  short(p) {
+    if (p.seat === this.playerSeat) return 'あなた';
+    if (this.controllers[p.seat] === 'remote') return this.humanNames[p.seat] ?? `P${p.seat + 1}`;
+    return this.presets[p.seat].short;
+  }
+
+  // 試合の設定(人数・席の操作者・乱数の種)。開始前に呼ぶ
+  // seats: [{ kind: 'local'|'remote'|'cpu'|'absent', name }]
+  setup({ seats, localSeat, seed, net = null }) {
+    this.controllers = seats.map((s) => s.kind);
+    this.humanNames = Object.fromEntries(seats.map((s, i) => [i, s.name]).filter(([, n]) => n));
+    this.localSeat = localSeat;
+    this.net = net;
+    this.setSeed(seed ?? (Math.random() * 2 ** 32) >>> 0);
+    this.controls.locked = false;
+    this.controls.setSeat(localSeat);
+    for (const p of this.players) {
+      p.present = this.controllers[p.seat] !== 'absent';
+      p.alive = p.present;
+    }
+    this.onSetup?.();
+    this.renderPlayers();
   }
 
   // ─── 時間で進む処理 ───
@@ -444,7 +512,7 @@ export class RouletteGame {
 
   load() {
     this.loaded = true;
-    this.bulletChamber = Math.floor(Math.random() * 6);
+    this.bulletChamber = Math.floor(this.rand() * 6);
     this.chamber = 0;
     this.updateChamberInfo();
   }
@@ -474,13 +542,13 @@ export class RouletteGame {
   // ─── 進行 ───
   start() {
     this.started = true;
-    this.playerSeat = this.controls.seatIndex;
+    this.playerSeat = this.localSeat ?? this.controls.seatIndex;
     this.controls.setSeat(this.playerSeat);
     this.controls.locked = true;
     this.ui.seatButtons.style.display = 'none';
     document.body.classList.add('playing'); // 操作説明を隠して画面を広く使う
     this.players.forEach((p) => {
-      p.name = p.seat === this.playerSeat ? 'あなた' : this.presets[p.seat].name;
+      p.name = p.seat === this.playerSeat ? 'あなた' : this.controllers[p.seat] === 'remote' ? this.short(p) : this.presets[p.seat].name;
     });
     // 一人称の前腕(座っている席のキャラクターの服の色)。手首から +y 方向へ伸びる
     const pre = this.presets[this.playerSeat];
@@ -547,7 +615,9 @@ export class RouletteGame {
     await this.wait(1.0);
     this.say(w.seat === this.playerSeat ? 'あなたの勝ちだ。最後まで生き残った。' : `${w.name} の勝ち。最後の 1 人になった。`);
     if (w.seat !== this.playerSeat) w.character.userData.focus = this.camera.position;
-    this.ui.restart.style.display = '';
+    // 通信対戦では、もう一度はホストだけが始められる
+    this.ui.restart.style.display = !this.net || this.net.isHost ? '' : 'none';
+    if (this.net && !this.net.isHost) this.say(`${this.ui.message.textContent}\nホストが次の試合を始めるのを待っています`);
   }
 
   // 開発・確認用:指定した人を最下位にしてルーレットだけ行う
@@ -614,8 +684,16 @@ export class RouletteGame {
     u.eyesClosed = true;
     u.tremble = 1;
     this.sfx.heartbeat(true, 105);
-    this.say('……');
-    await this.wait(1.6 + Math.random() * 1.6);
+    this.say(this.controllers[pl.seat] === 'remote' ? `${pl.name} が引き金に指をかける……` : '……');
+    // 通信相手なら本人が引き金を引くのを待つ。CPU は少し間をおく
+    await this.decide(
+      pl,
+      () => null,
+      async () => {
+        await this.wait(1.6 + this.rand(pl.seat) * 1.6);
+        return true;
+      },
+    );
     this.sfx.heartbeat(false);
 
     this.dropHammer();
@@ -687,7 +765,11 @@ export class RouletteGame {
     this.say('引き金を引け');
     document.exitPointerLock?.();
     this.ui.trigger.style.display = '';
-    await new Promise((res) => (this._resolveTrigger = res));
+    await this.decide(
+      pl,
+      () => new Promise((res) => (this._resolveTrigger = () => res(true))),
+      () => true,
+    );
     this._resolveTrigger = null;
     this.ui.trigger.style.display = 'none';
     this.sfx.heartbeat(false);
@@ -737,7 +819,8 @@ export class RouletteGame {
     await this.lookForward();
   }
 
-  restart() {
+  // silent=true は通信対戦の開始処理から呼ぶとき(ロビーへの通知をしない)
+  restart(silent = false) {
     this.over = false;
     this.started = false;
     this.playerDead = false;
@@ -748,10 +831,12 @@ export class RouletteGame {
     this.tasks = [];
     this.sfx.heartbeat(false);
     for (const p of this.players) {
-      p.alive = true;
+      p.alive = p.present;
       p.name = this.presets[p.seat].name;
       resetCharacter(p.character);
     }
+    // 一人用は毎回新しい種。通信対戦はホストが配る種で setup() し直す
+    if (!this.net) this.setSeed((Math.random() * 2 ** 32) >>> 0);
     this.dropHammer();
     this._applyPose(this.gunRest.p, this.gunRest.q);
     this.cartridge.visible = true;
@@ -771,6 +856,7 @@ export class RouletteGame {
     this.clearFloats();
     this.updateChamberInfo();
     this.renderPlayers();
+    if (!silent) this.onRestart?.();
   }
 
   // ─── 画面表示 ───
@@ -785,10 +871,12 @@ export class RouletteGame {
     const ul = this.ui.players;
     ul.innerHTML = '';
     for (const p of this.players) {
+      if (!p.present) continue;
       const li = document.createElement('li');
       const isMe = this.started ? p.seat === this.playerSeat : p.seat === this.controls.seatIndex;
       li.className = `${p.alive ? 'alive' : 'dead'}${isMe ? ' me' : ''}`;
-      const name = isMe && !this.started ? `${this.presets[p.seat].name}(あなた)` : p.name;
+      const remote = this.controllers[p.seat] === 'remote';
+      const name = !this.started ? (isMe ? `${this.presets[p.seat].name}(あなた)` : remote ? `${this.short(p)}(プレイヤー)` : `${this.presets[p.seat].name}(CPU)`) : p.name;
       li.innerHTML = `<span class="mark">${p.alive ? '●' : '✕'}</span>${name}`;
       const tag = this.tags?.[p.seat];
       if (tag) li.innerHTML += ` <span class="tag">${tag}</span>`;

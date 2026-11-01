@@ -28,14 +28,14 @@ export class Spoof {
   }
 
   // AI:自分の枚数 + 他の人の平均(1.5 枚)を基本に、先に言った人の予想も少し参考にする
-  aiGuess(own, n, taken, earlier) {
+  aiGuess(game, p, own, n, taken, earlier) {
     let est = own + 1.5 * (n - 1);
     if (earlier.length) {
       // 先に言った人の予想 − その人の想定(1.5 + 他の平均)… を大まかに平均と混ぜる
       const hint = earlier.reduce((a, b) => a + b, 0) / earlier.length;
       est = est * 0.7 + hint * 0.3;
     }
-    est += (Math.random() - 0.5) * 1.2;
+    est += (game.rand(p.seat) - 0.5) * 1.2;
     const lo = own;
     const hi = own + 3 * (n - 1);
     let best = null;
@@ -61,7 +61,7 @@ export class Spoof {
       game.tags = Object.fromEntries([...status].map(([s, v]) => [s, v]));
       game.renderPlayers();
     };
-    let starter = Math.floor(Math.random() * group.length);
+    let starter = Math.floor(game.rand() * group.length);
 
     while (group.length > 1) {
       this.cleanup();
@@ -69,18 +69,21 @@ export class Spoof {
       const n = group.length;
       // 握る枚数を決める
       const hold = new Map();
-      for (const p of group) if (!isMe(game, p)) hold.set(p.seat, Math.floor(Math.random() * 4));
       const me = group.find((p) => isMe(game, p));
-      if (me) {
-        const v = await game.choose(
-          [0, 1, 2, 3].map((k) => ({ label: `🪙 ${k} 枚`, value: k })),
-          `コインを何枚握る?(残り ${n} 人)`,
-        );
-        hold.set(me.seat, v);
-      } else {
-        game.say(`全員がコインを握る……(残り ${n} 人)`);
-        await game.wait(1.4);
-      }
+      if (!me) game.say(`全員がコインを握る……(残り ${n} 人)`);
+      await Promise.all(
+        group.map(async (p) => {
+          const v = await game.decide(
+            p,
+            () => game.choose([0, 1, 2, 3].map((k) => ({ label: `🪙 ${k} 枚`, value: k })), `コインを何枚握る?(残り ${n} 人)`),
+            async () => {
+              if (!me) await game.wait(1.4);
+              return Math.floor(game.rand(p.seat) * 4);
+            },
+          );
+          hold.set(p.seat, v);
+        }),
+      );
       // 握った拳を前に出す
       for (const p of group) {
         if (isMe(game, p)) continue;
@@ -95,16 +98,19 @@ export class Spoof {
       const guesses = new Map();
       const taken = new Set();
       for (const p of order) {
-        let g;
-        if (isMe(game, p)) {
-          const opts = [];
-          for (let v = 0; v <= 3 * n; v++) opts.push({ label: String(v), value: v, disabled: taken.has(v) });
-          g = await game.choose(opts, `あなたは ${hold.get(p.seat)} 枚。全員の合計は?(言われた数は選べない)`);
-        } else {
-          game.say(`${label(game, p)} の予想……`);
-          await game.wait(0.9 + Math.random() * 0.6);
-          g = this.aiGuess(hold.get(p.seat), n, taken, [...guesses.values()]);
-        }
+        if (!isMe(game, p)) game.say(`${label(game, p)} の予想……`);
+        const g = await game.decide(
+          p,
+          () => {
+            const opts = [];
+            for (let v = 0; v <= 3 * n; v++) opts.push({ label: String(v), value: v, disabled: taken.has(v) });
+            return game.choose(opts, `あなたは ${hold.get(p.seat)} 枚。全員の合計は?(言われた数は選べない)`);
+          },
+          async () => {
+            await game.wait(0.9 + game.rand(p.seat) * 0.6);
+            return this.aiGuess(game, p, hold.get(p.seat), n, taken, [...guesses.values()]);
+          },
+        );
         guesses.set(p.seat, g);
         taken.add(g);
         game.setFloat(p.seat, `予想 ${g}`);

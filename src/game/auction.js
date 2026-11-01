@@ -43,12 +43,13 @@ export class GoldAuction {
   }
 
   // AI:金塊の価値に応じて入札。後のラウンドのために少し残す。たまに大胆に張る
-  aiBid(value, chips, roundsLeft) {
+  aiBid(game, p, value, chips, roundsLeft) {
+    const r = () => game.rand(p.seat);
     const reserve = Math.max(0, roundsLeft - 1) * 2;
     const budget = Math.max(0, chips - reserve);
-    let b = Math.round(value * (0.6 + Math.random() * 0.9));
-    if (Math.random() < 0.15) b += 2 + Math.floor(Math.random() * 3);
-    if (roundsLeft === 1) b = Math.max(b, Math.round(chips * (0.4 + Math.random() * 0.6)));
+    let b = Math.round(value * (0.6 + r() * 0.9));
+    if (r() < 0.15) b += 2 + Math.floor(r() * 3);
+    if (roundsLeft === 1) b = Math.max(b, Math.round(chips * (0.4 + r() * 0.6)));
     return Math.max(0, Math.min(budget || chips, b, chips));
   }
 
@@ -69,7 +70,7 @@ export class GoldAuction {
       game.renderPlayers();
     };
     show();
-    const values = shuffle([1, 2, 3, 4, 5, 6]).slice(0, ROUNDS);
+    const values = shuffle([1, 2, 3, 4, 5, 6], () => game.rand()).slice(0, ROUNDS);
 
     for (let r = 0; r < ROUNDS; r++) {
       const value = values[r];
@@ -88,16 +89,25 @@ export class GoldAuction {
 
       // 入札
       const bids = new Map();
-      for (const p of alive) if (!isMe(game, p)) bids.set(p.seat, this.aiBid(value, chips.get(p.seat), ROUNDS - r));
       const me = alive.find((p) => isMe(game, p));
-      if (me) {
-        const opts = [];
-        for (let k = 0; k <= chips.get(me.seat); k++) opts.push({ label: String(k), value: k });
-        bids.set(me.seat, await game.choose(opts, `金塊 ${value} 点。いくら賭ける?(手持ち ${chips.get(me.seat)} 枚)`));
-      } else {
-        game.say('全員が入札額を考えている……');
-        await game.wait(1.6);
-      }
+      if (!me) game.say('全員が入札額を考えている……');
+      await Promise.all(
+        alive.map(async (p) => {
+          const b = await game.decide(
+            p,
+            () => {
+              const opts = [];
+              for (let k = 0; k <= chips.get(p.seat); k++) opts.push({ label: String(k), value: k });
+              return game.choose(opts, `金塊 ${value} 点。いくら賭ける?(手持ち ${chips.get(p.seat)} 枚)`);
+            },
+            async () => {
+              if (!me) await game.wait(1.6);
+              return this.aiBid(game, p, value, chips.get(p.seat), ROUNDS - r);
+            },
+          );
+          bids.set(p.seat, b);
+        }),
+      );
 
       // 公開:入札分のチップを前に出す
       game.say('入札公開!');

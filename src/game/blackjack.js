@@ -35,17 +35,18 @@ export class Blackjack {
 
   // AI:他の人の点数は見えないので、自分の点数と「相手が何枚引いたか」だけで決める
   //   たくさん引いた相手は高い点(またはバースト)の可能性が高いので、少し強気になる
-  aiHit(total, othersCardCounts) {
+  aiHit(game, p, total, othersCardCounts) {
+    const r = game.rand(p.seat);
     if (total <= 11) return true;
     if (total >= 18) return false;
     const greedy = othersCardCounts.filter((n) => n >= 3).length * 0.08;
-    if (total >= 17) return Math.random() < 0.08;
-    if (total >= 15) return Math.random() < 0.35 + greedy;
-    return Math.random() < 0.8;
+    if (total >= 17) return r < 0.08;
+    if (total >= 15) return r < 0.35 + greedy;
+    return r < 0.8;
   }
 
   async play(game) {
-    const alive = shuffle(game.players.filter((p) => p.alive));
+    const alive = shuffle(game.players.filter((p) => p.alive), () => game.rand());
     game.say(
       this.firstTime
         ? 'ブラックジャック:21 に近づけろ。超えたらバーストで 0 点。\n自分の点数は自分にしか見えない。最後に全員で開示し、一番低い者が撃つ。'
@@ -54,7 +55,7 @@ export class Blackjack {
     await game.wait(this.firstTime ? 4.4 : 2.0);
     this.firstTime = false;
 
-    const deck = makeDeck();
+    const deck = makeDeck(() => game.rand());
     const hands = new Map(alive.map((p) => [p.seat, []]));
     const cards = new Map(alive.map((p) => [p.seat, []]));
     const finals = new Map();
@@ -92,20 +93,22 @@ export class Blackjack {
       for (;;) {
         const t = bjTotal(hands.get(p.seat));
         if (t >= 21 || hands.get(p.seat).length >= MAX_CARDS) break;
-        let hit;
-        if (isMe(game, p)) {
-          hit =
-            (await game.choose(
-              [
-                { label: '🂠 ヒット(もう 1 枚)', value: true },
-                { label: '✋ スタンド', value: false },
-              ],
-              `あなたの点数:${t}。ヒットか、スタンドか?`,
-            )) === true;
-        } else {
-          await game.wait(0.7 + Math.random() * 0.7);
-          hit = this.aiHit(t, alive.filter((o) => o !== p).map((o) => cards.get(o.seat).length));
-        }
+        const hit =
+          (await game.decide(
+            p,
+            () =>
+              game.choose(
+                [
+                  { label: '🂠 ヒット(もう 1 枚)', value: true },
+                  { label: '✋ スタンド', value: false },
+                ],
+                `あなたの点数:${t}。ヒットか、スタンドか?`,
+              ),
+            async () => {
+              await game.wait(0.7 + game.rand(p.seat) * 0.7);
+              return this.aiHit(game, p, t, alive.filter((o) => o !== p).map((o) => cards.get(o.seat).length));
+            },
+          )) === true;
         if (!hit) break;
         game.say(`${label(game, p)}:ヒット`);
         await give(p);

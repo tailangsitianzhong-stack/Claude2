@@ -19,10 +19,10 @@ export class ChickenDice {
   }
 
   // AI:まだ誰も確定していなければ 10〜14 を目標、確定した人がいれば「一番低い人+1」を超えるまで振る
-  aiWantsRoll(total, banked, remaining) {
+  aiWantsRoll(game, p, total, banked, remaining) {
     if (total === 0) return true;
     const done = [...banked.values()];
-    let target = 10 + Math.floor(Math.random() * 5);
+    let target = 10 + Math.floor(game.rand(p.seat) * 5);
     if (done.length) {
       const low = Math.min(...done);
       target = remaining === 0 ? low + 1 : Math.max(8, Math.min(target, low + 3));
@@ -31,7 +31,7 @@ export class ChickenDice {
   }
 
   async play(game) {
-    const alive = shuffle(game.players.filter((p) => p.alive));
+    const alive = shuffle(game.players.filter((p) => p.alive), () => game.rand());
     game.say(
       this.firstTime
         ? 'チキン・ダイス:順番にサイコロを好きなだけ振り、出た目を足していく。\n1 が出たら 0 点。合計が一番小さい者が撃つ。'
@@ -61,23 +61,28 @@ export class ChickenDice {
       let bust = false;
       for (;;) {
         // 振るかどうか
-        let roll;
-        if (total === 0) roll = true;
-        else if (isMe(game, p)) {
+        let roll = true;
+        if (total > 0) {
+          if (!isMe(game, p) && game.controllers[p.seat] === 'remote') game.say(`${label(game, p)}:合計 ${total}。振るか、やめるか……`);
           roll =
-            (await game.choose(
-              [
-                { label: `🎲 もう一度振る(今 ${total})`, value: true },
-                { label: `✋ やめる(${total} で確定)`, value: false },
-              ],
-              `合計 ${total}。振るか、やめるか?`,
+            (await game.decide(
+              p,
+              () =>
+                game.choose(
+                  [
+                    { label: `🎲 もう一度振る(今 ${total})`, value: true },
+                    { label: `✋ やめる(${total} で確定)`, value: false },
+                  ],
+                  `合計 ${total}。振るか、やめるか?`,
+                ),
+              async () => {
+                await game.wait(0.5 + game.rand(p.seat) * 0.5);
+                return this.aiWantsRoll(game, p, total, banked, remaining);
+              },
             )) === true;
-        } else {
-          await game.wait(0.5 + Math.random() * 0.5);
-          roll = this.aiWantsRoll(total, banked, remaining);
         }
         if (!roll) break;
-        const v = 1 + Math.floor(Math.random() * 6);
+        const v = 1 + Math.floor(game.rand() * 6);
         const from = tableSpot(game, p.seat, 0.6, 0.05, 0.15);
         const to = tableSpot(game, p.seat, 0.25, (Math.random() - 0.5) * 0.12);
         await rollDie(game, die, v, from, to);

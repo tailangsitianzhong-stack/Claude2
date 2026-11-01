@@ -15,7 +15,7 @@ const PERIOD = 1.05; // メーターが 1 往復する秒数
 // キャラクターごとのブレ(小さいほど上手い)
 const SKILL = [0.07, 0.05, 0.09, 0.06];
 
-const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+const gauss = (r) => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
 
 function createShotGlass() {
   const g = new THREE.Group();
@@ -144,7 +144,7 @@ export class ShotSlide {
   }
 
   async play(game) {
-    const alive = shuffle(game.players.filter((p) => p.alive));
+    const alive = shuffle(game.players.filter((p) => p.alive), () => game.rand());
     game.say(
       this.firstTime
         ? 'ショット・スライド:メーターを止めて、グラスを中央の的へ滑らせろ。\n金色の所がちょうど良い強さ。強すぎると落ちる。的から一番遠い者が撃つ。'
@@ -164,13 +164,17 @@ export class ShotSlide {
       game.controls.setFocus(isMe(game, p) ? game.tablePos.clone().setY(game.tableTop) : p.character.userData.head.getWorldPosition(new THREE.Vector3()));
       for (const o of alive) o.character.userData.focus = game.tablePos.clone().setY(game.tableTop);
       await game.wait(0.9);
-      let power;
-      if (isMe(game, p)) {
-        game.say('メーターが金色の所で止めろ!');
-        power = await this.meter(game);
-      } else {
-        await game.wait(0.6 + Math.random() * 0.6);
-        power = Math.min(1, Math.max(0.05, SWEET + gauss() * SKILL[p.seat]));
+      if (isMe(game, p)) game.say('メーターが金色の所で止めろ!');
+      else if (game.controllers[p.seat] === 'remote') game.say(`${label(game, p)} が狙っている……`);
+      const power = await game.decide(
+        p,
+        async () => Math.round((await this.meter(game)) * 10000) / 10000,
+        async () => {
+          await game.wait(0.6 + game.rand(p.seat) * 0.6);
+          return Math.min(1, Math.max(0.05, SWEET + gauss(() => game.rand(p.seat)) * SKILL[p.seat]));
+        },
+      );
+      if (!isMe(game, p)) {
         // 押し出す腕の動き
         const u = p.character.userData;
         const arm = u.arms[0];

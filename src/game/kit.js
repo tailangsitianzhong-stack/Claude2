@@ -5,15 +5,16 @@ export const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 export const easeOut = (t) => 1 - (1 - t) ** 3;
 
-export function shuffle(a) {
+// rnd を渡すとその乱数で並べ替える(通信対戦で全員同じ並びにするため game.rand を渡す)
+export function shuffle(a, rnd = Math.random) {
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rnd() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-export const label = (game, p) => (p.seat === game.playerSeat ? 'あなた' : game.presets[p.seat].short);
+export const label = (game, p) => game.short(p);
 export const isMe = (game, p) => p.seat === game.playerSeat && !game.playerDead;
 
 // 席から見た向き:dir = テーブル中央 → 席、right = 席に座った人の右手側
@@ -109,8 +110,8 @@ export const SUIT_ORDER = { '♠': 4, '♥': 3, '♦': 2, '♣': 1 };
 export const RANK_LABEL = (r) => ({ 1: 'A', 11: 'J', 12: 'Q', 13: 'K' })[r] ?? String(r);
 export const cardName = (c) => `${RANK_LABEL(c.r)}${c.s}`;
 
-export function makeDeck() {
-  return shuffle(SUITS.flatMap((s) => Array.from({ length: 13 }, (_, i) => ({ r: i + 1, s }))));
+export function makeDeck(rnd = Math.random) {
+  return shuffle(SUITS.flatMap((s) => Array.from({ length: 13 }, (_, i) => ({ r: i + 1, s }))), rnd);
 }
 
 const faceTex = {};
@@ -246,7 +247,7 @@ export async function rollOff(game, tied, why = '同点') {
     dice.length = 0;
     const vals = new Map();
     await staggered(group, 0.25, game, async (p) => {
-      const v = 1 + Math.floor(Math.random() * 6);
+      const v = 1 + Math.floor(game.rand(p.seat) * 6);
       vals.set(p.seat, v);
       const die = createDie();
       dice.push(die);

@@ -155,9 +155,9 @@ export class NumbersGame {
     game.sfx.card();
   }
 
-  aiPick() {
+  aiPick(game, p) {
     const total = AI_WEIGHTS.reduce((a, b) => a + b, 0);
-    let r = Math.random() * total;
+    let r = game.rand(p.seat) * total;
     for (let i = 0; i < 6; i++) {
       r -= AI_WEIGHTS[i];
       if (r <= 0) return i + 1;
@@ -166,7 +166,7 @@ export class NumbersGame {
   }
 
   label(game, pl) {
-    return pl.seat === game.playerSeat ? 'あなた' : game.presets[pl.seat].short;
+    return game.short(pl);
   }
 
   async play(game) {
@@ -184,23 +184,25 @@ export class NumbersGame {
 
       // コンピューターは考える時間を置いてから出す。プレイヤーは手札から選ぶ
       const picks = new Map();
-      const jobs = alive
-        .filter((p) => p.seat !== game.playerSeat)
-        .map(async (p) => {
-          await game.wait(0.8 + Math.random() * 2.2);
-          const n = this.aiPick(p);
-          picks.set(p.seat, n);
-          await this.placeCard(game, p, n);
-        });
-      if (playerIn) {
-        this.hand.style.display = '';
-        document.exitPointerLock?.();
-        const n = await new Promise((res) => (this._pick = res));
-        this._pick = null;
-        this.hand.style.display = 'none';
-        picks.set(game.playerSeat, n);
-        await this.placeCard(game, game.players[game.playerSeat], n);
-      }
+      const jobs = alive.map(async (p) => {
+        const n = await game.decide(
+          p,
+          async () => {
+            this.hand.style.display = '';
+            document.exitPointerLock?.();
+            const v = await new Promise((res) => (this._pick = res));
+            this._pick = null;
+            this.hand.style.display = 'none';
+            return v;
+          },
+          async () => {
+            await game.wait(0.8 + game.rand(p.seat) * 2.2);
+            return this.aiPick(game, p);
+          },
+        );
+        picks.set(p.seat, n);
+        await this.placeCard(game, p, n);
+      });
       await Promise.all(jobs);
       for (const p of alive) p.character.userData.focus = null;
 
@@ -242,7 +244,7 @@ export class NumbersGame {
       let losers;
       if (dupes.length === 1) {
         const [n, ps] = dupes[0];
-        const order = Math.random() < 0.5 ? [ps[0], ps[1]] : [ps[1], ps[0]];
+        const order = game.rand() < 0.5 ? [ps[0], ps[1]] : [ps[1], ps[0]];
         game.say(`${this.label(game, ps[0])} と ${this.label(game, ps[1])} が ${n} で被った!${winText ? '\n' + winText : ''}`);
         await game.wait(2.4);
         game.say(`2 人とも撃つ。先に撃つのは ${this.label(game, order[0])}`);

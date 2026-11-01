@@ -44,7 +44,7 @@ export class QuickDraw {
     game.clearFloats();
     game.say('構えろ……');
     const start = game.clock;
-    const signal = 1.6 + Math.random() * 2.6;
+    const signal = 1.6 + game.rand() * 2.6;
     let playerPress = null;
     const me = group.find((p) => isMe(game, p));
     // プレイヤーのボタン
@@ -84,9 +84,9 @@ export class QuickDraw {
     // コンピューターの手を出す時刻
     const at = new Map();
     for (const p of group) {
-      if (me === p) continue;
-      const early = Math.random() < 0.04;
-      at.set(p.seat, early ? signal * (0.4 + Math.random() * 0.5) : signal + BASE[p.seat] + Math.random() * 0.3);
+      if (game.isHuman(p)) continue;
+      const early = game.rand(p.seat) < 0.04;
+      at.set(p.seat, early ? signal * (0.4 + game.rand(p.seat) * 0.5) : signal + BASE[p.seat] + game.rand(p.seat) * 0.3);
     }
     const acted = new Set();
     let fired = false;
@@ -118,9 +118,15 @@ export class QuickDraw {
     box.style.display = 'none';
     this._press = null;
 
+    // 人間の反応時間は本人の端末で測った値を全員で使う(通信相手の分は届くのを待つ)
     const times = new Map();
+    if (group.some((p) => game.controllers[p.seat] === 'remote')) game.say('全員の結果を待っています……');
     for (const p of group) {
-      const tm = me === p ? (playerPress ?? 99) : at.get(p.seat);
+      const tm = await game.decide(
+        p,
+        () => Math.round((playerPress ?? 99) * 1000) / 1000,
+        () => at.get(p.seat),
+      );
       times.set(p.seat, tm < signal ? -1 : tm - signal);
     }
     for (const p of group) {
