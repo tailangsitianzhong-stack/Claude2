@@ -32,6 +32,7 @@ export class SeatControls {
     let lx = 0;
     let ly = 0;
     d.addEventListener('click', () => {
+      if (this.touch) return; // スマホではポインターロックを使わない
       if (document.pointerLockElement !== d) d.requestPointerLock?.();
     });
     document.addEventListener('mousemove', (e) => {
@@ -49,6 +50,7 @@ export class SeatControls {
     });
     window.addEventListener('mouseup', () => (dragging = false));
     d.addEventListener('touchstart', (e) => {
+      this.touch = true;
       const t = e.touches[0];
       lx = t.clientX;
       ly = t.clientY;

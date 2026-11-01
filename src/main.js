@@ -8,9 +8,13 @@ import { createRevolver, createCartridge } from './props/revolver.js';
 import { createCharacter, updateCharacter, CHARACTER_PRESETS } from './props/character.js';
 import { createRng } from './textures.js';
 
+// スマホ・タブレットでは画質を落として軽くする
+const isMobile = matchMedia('(pointer: coarse)').matches || /iPhone|iPad|Android/i.test(navigator.userAgent);
+document.body.classList.toggle('mobile', isMobile);
+
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -25,7 +29,7 @@ scene.fog = new THREE.FogExp2(0x1c120a, 0.035);
 const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.03, 120);
 
 const M = createMaterials();
-const { lights, tablePos } = buildRoom(scene, M);
+const { lights, tablePos } = buildRoom(scene, M, { shadowSize: isMobile ? 1024 : 2048 });
 const rng = createRng(2024);
 
 // ─── ポーカーテーブルと 4 脚の椅子 ───
@@ -81,7 +85,7 @@ scene.add(bounce);
 const counter = createBarCounter(M, { L: 8 });
 counter.position.set(-1, 0, -4.9);
 scene.add(counter);
-const backBar = createBackBar(M, { L: 8 });
+const backBar = createBackBar(M, { L: 8, mirror: !isMobile });
 backBar.position.set(-1, 0, -ROOM.D / 2 + 0.25);
 scene.add(backBar);
 
@@ -180,15 +184,31 @@ const status = document.getElementById('status');
 const updateStatus = () => {
   characters.forEach((c, i) => (c.visible = controls.mode === 'free' || i !== controls.seatIndex));
   status.textContent = controls.mode === 'seat' ? `席 ${controls.seatIndex + 1} に着席中` : '自由移動モード';
+  document.querySelectorAll('#seat-buttons button').forEach((b) => b.classList.toggle('active', controls.mode === 'seat' && Number(b.dataset.seat) === controls.seatIndex));
 };
 controls.onChange = updateStatus;
 updateStatus();
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+// 画面上の席ボタン(スマホ用。PC でも使える)
+document.querySelectorAll('#seat-buttons button').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    controls.setSeat(Number(btn.dataset.seat));
+  });
+});
+
+// 縦長の画面(スマホ縦持ち)では横方向の視野が狭くなりすぎないよう、縦の視野角を広げる
+function fitCamera() {
+  const aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = aspect;
+  const wantH = THREE.MathUtils.degToRad(76); // 確保したい横の視野角
+  const v = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(wantH / 2) / aspect));
+  camera.fov = THREE.MathUtils.clamp(v, 68, 100);
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener('resize', fitCamera);
+fitCamera();
 
 // 確認用(開発時にコンソールから視点を動かせる)
 window.__saloon = {

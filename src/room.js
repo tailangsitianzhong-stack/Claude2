@@ -225,7 +225,7 @@ function createWheelChandelier(M, ceilingY, y) {
 }
 
 // 部屋全体を組み立てる
-export function buildRoom(scene, M) {
+export function buildRoom(scene, M, { shadowSize = 2048 } = {}) {
   const { W, D, H, WAINSCOT } = ROOM;
   const rng = createRng(99);
   const lights = [];
@@ -428,7 +428,7 @@ export function buildRoom(scene, M) {
   const main = new THREE.PointLight(0xffb066, 38, 0, 2);
   main.position.set(tablePos.x, 3.05, tablePos.z);
   main.castShadow = true;
-  main.shadow.mapSize.set(2048, 2048);
+  main.shadow.mapSize.set(shadowSize, shadowSize);
   main.shadow.bias = -0.0015;
   main.shadow.normalBias = 0.02;
   main.shadow.radius = 4;

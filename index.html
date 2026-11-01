@@ -2,21 +2,49 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Saloon Roulette</title>
+    <!-- ビルドせずに GitHub Pages で直接開いても three.js を読み込めるようにする -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0705; }
-      #scene { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+      #scene { display: block; width: 100vw; height: 100vh; height: 100dvh; cursor: crosshair; touch-action: none; }
       #hud {
-        position: fixed; left: 16px; top: 16px; padding: 10px 14px;
+        position: fixed; left: 16px; top: max(16px, env(safe-area-inset-top)); padding: 10px 14px;
         font: 13px/1.6 "Hiragino Sans", "Noto Sans JP", sans-serif; color: #e8d5b0;
         background: rgba(20, 12, 6, 0.6); border: 1px solid rgba(216, 178, 90, 0.35); border-radius: 6px;
-        pointer-events: none; user-select: none;
+        pointer-events: none; user-select: none; max-width: calc(100vw - 60px);
       }
       #status { color: #d8b25a; font-weight: bold; }
+      #status:empty::before { content: '読み込み中…'; }
+      .help-touch { display: none; }
+      body.mobile .help-pc { display: none; }
+      body.mobile .help-touch { display: block; }
       #crosshair {
         position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
         border-radius: 50%; background: rgba(255, 230, 190, 0.6); pointer-events: none;
+      }
+      #seat-buttons {
+        position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+        display: flex; gap: 10px;
+      }
+      #seat-buttons button {
+        font: bold 15px "Hiragino Sans", "Noto Sans JP", sans-serif; color: #e8d5b0;
+        background: rgba(20, 12, 6, 0.7); border: 1px solid rgba(216, 178, 90, 0.45); border-radius: 8px;
+        padding: 10px 16px; min-width: 64px;
+      }
+      #seat-buttons button.active { background: rgba(140, 100, 40, 0.85); color: #fff3d8; }
+      #error {
+        display: none; position: fixed; left: 16px; right: 16px; bottom: 90px; padding: 12px;
+        font: 12px/1.5 monospace; color: #ffd0c0; background: rgba(80, 10, 10, 0.85); border-radius: 6px;
+        white-space: pre-wrap; word-break: break-all;
       }
     </style>
   </head>
@@ -25,10 +53,28 @@
     <div id="crosshair"></div>
     <div id="hud">
       <div id="status"></div>
-      <div>クリック/ドラッグ:見回す　Esc:マウス解除</div>
-      <div>1〜4:席を移動　F:自由移動モード切替</div>
-      <div>自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
+      <div class="help-pc">クリック/ドラッグ:見回す　Esc:マウス解除</div>
+      <div class="help-pc">1〜4:席を移動　F:自由移動モード切替</div>
+      <div class="help-pc">自由移動中:WASD 移動 / E・Q 上下 / Shift 速く</div>
+      <div class="help-touch">画面をなぞって見回す / 下のボタンで席を移動</div>
     </div>
-    <script type="module" src="/src/main.js"></script>
+    <div id="seat-buttons">
+      <button data-seat="0">席1</button>
+      <button data-seat="1">席2</button>
+      <button data-seat="2">席3</button>
+      <button data-seat="3">席4</button>
+    </div>
+    <div id="error"></div>
+    <script>
+      // 読み込みや描画のエラーを画面に表示する(スマホでの確認用)
+      function showError(msg) {
+        const el = document.getElementById('error');
+        el.style.display = 'block';
+        el.textContent += msg + '\n';
+      }
+      window.addEventListener('error', (e) => showError('エラー: ' + (e.message || e.target?.src || e)), true);
+      window.addEventListener('unhandledrejection', (e) => showError('エラー: ' + (e.reason?.message || e.reason)));
+    </script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

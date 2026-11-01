@@ -75,7 +75,7 @@ export function createBarCounter(M, { L = 8 } = {}) {
 }
 
 // 酒棚(壁際)。背面が -z、正面が +z
-export function createBackBar(M, { L = 8 } = {}) {
+export function createBackBar(M, { L = 8, mirror: realMirror = true } = {}) {
   const g = new THREE.Group();
   const D = 0.5;
   const BH = 0.95;
@@ -99,12 +99,18 @@ export function createBackBar(M, { L = 8 } = {}) {
   const mirrorW = L - 1.6;
   const backZ = -D / 2 + 0.02;
   box(g, L, top - BH, 0.04, M.woodDark, 0, BH + (top - BH) / 2, -D / 2 + 0.02, 1); // 背板
-  const mirror = new Reflector(new THREE.PlaneGeometry(mirrorW, 1.3), {
-    textureWidth: 1024,
-    textureHeight: 256,
-    color: 0x8a8478,
-    clipBias: 0.003,
-  });
+  // 実際に映り込む鏡は重いので、スマホでは光沢のある板で代用する
+  const mirror = realMirror
+    ? new Reflector(new THREE.PlaneGeometry(mirrorW, 1.3), {
+        textureWidth: 1024,
+        textureHeight: 256,
+        color: 0x8a8478,
+        clipBias: 0.003,
+      })
+    : new THREE.Mesh(
+        new THREE.PlaneGeometry(mirrorW, 1.3),
+        new THREE.MeshStandardMaterial({ color: 0x2a2620, metalness: 0.9, roughness: 0.15 }),
+      );
   mirror.position.set(0, 1.35 + 0.65, backZ + 0.03);
   g.add(mirror);
 
